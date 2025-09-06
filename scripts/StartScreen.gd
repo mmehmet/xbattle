@@ -5,20 +5,31 @@ signal game_started(config: Dictionary)
 # Configuration
 var selected_map_size: Vector2i = Vector2i(15, 15)
 var enable_wrapping: bool = false
+var terrain: Dictionary
 
-# Map size options
-var map_sizes = [
+# Map options
+const map_sizes = [
     {"name": "10x10", "size": Vector2i(10, 10)},
     {"name": "15x15", "size": Vector2i(15, 15)},
     {"name": "25x25", "size": Vector2i(25, 25)},
     {"name": "35x35", "size": Vector2i(35, 35)},
     {"name": "50x50", "size": Vector2i(50, 50)}
 ]
+const TERRAIN_LIMITS = {
+    "hill": {"max": 30, "min": 10},
+    "sea": {"max": 20, "min": 5}, 
+    "town": {"max": 15, "min": 5}
+}
 
 func _ready():
     setup_ui()
 
 func setup_ui():
+    terrain = {
+        "hill": randi_range(TERRAIN_LIMITS.hill.min, TERRAIN_LIMITS.hill.max),
+        "sea": randi_range(TERRAIN_LIMITS.sea.min, TERRAIN_LIMITS.sea.max),
+        "town": randi_range(TERRAIN_LIMITS.town.min, TERRAIN_LIMITS.town.max),
+    }
     var vbox = VBoxContainer.new()
     add_child(vbox)
     
@@ -39,7 +50,6 @@ func setup_ui():
     # Map size
     var map_label = Label.new()
     map_label.text = "Map Size:"
-    map_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     vbox.add_child(map_label)
     
     var map_dropdown = OptionButton.new()
@@ -51,6 +61,13 @@ func setup_ui():
     
     add_spacer(vbox, 20)
     
+    # Game info
+    var info_label = Label.new()
+    info_label.text = "• %d%% Hills\n• %d%% Sea\n• %d%% Towns" % [terrain.hill, terrain.sea, terrain.town]
+    vbox.add_child(info_label)
+    
+    add_spacer(vbox, 20)
+    
     # Edge wrapping
     var wrap_checkbox = CheckBox.new()
     wrap_checkbox.text = "Edge Wrapping"
@@ -59,15 +76,6 @@ func setup_ui():
     vbox.add_child(wrap_checkbox)
     
     add_spacer(vbox, 30)
-    
-    # Game info
-    var info_label = Label.new()
-    info_label.text = "• 2 Players\n• Hexagonal Tiles\n• 10% Hills, 5% Sea, 10% Towns"
-    info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    info_label.add_theme_font_size_override("font_size", 14)
-    vbox.add_child(info_label)
-    
-    add_spacer(vbox, 20)
     
     # Start button
     var start_button = Button.new()
@@ -92,10 +100,10 @@ func _on_start_game():
     var config = {
         "map_size": selected_map_size,
         "enable_wrapping": enable_wrapping,
-        "hill_density": 10,
-        "sea_density": 5,
-        "town_density": 10,
-        "player_count": 2
+        "player_count": 2,
+        "hill_density": terrain.hill,
+        "sea_density": terrain.sea,
+        "town_density": terrain.town,
     }
     
     game_started.emit(config)

@@ -22,18 +22,28 @@ var selected_cell: Cell = null
 var mouse_down: bool = false
 
 # Colors
+
 const player_colors = [
-    Color.RED, Color.BLUE, Color.GREEN, Color.YELLOW, Color.MAGENTA,
-    Color.CYAN, Color.ORANGE, Color.PURPLE, Color.BROWN, Color.PINK, Color.GRAY
+    Color.RED,      # Player 0
+    Color.BLUE,     # Player 1  
+    Color.GREEN,    # Player 2
+    Color.YELLOW,   # Player 3
+    Color.MAGENTA,  # Player 4
+    Color.CYAN,     # Player 5
+    Color.ORANGE,   # Player 6
+    Color.PURPLE,   # Player 7
+    Color.BROWN,    # Player 8
+    Color.PINK,     # Player 9
+    Color.GRAY      # Player 10
 ]
 
 const terrain_colors = {
-    -2: Color.CORNFLOWER_BLUE,
-    -1: Color.LIGHT_BLUE,
-    0: Color(0.8, 0.8, 0.4),
-    1: Color.DARK_SEA_GREEN,
-    2: Color.SEA_GREEN,
-    3: Color.DARK_GRAY
+    -2: Color.CORNFLOWER_BLUE,  # Deep sea
+    -1: Color.LIGHT_BLUE,       # Shallow sea
+    0: Color(0.8, 0.8, 0.4),    # Flat land
+    1: Color.DARK_SEA_GREEN,    # Low bush
+    2: Color.SEA_GREEN,         # Medium hills
+    3: Color.LIGHT_GRAY         # High hills
 }
 
 func _init(board_width: int = 15, board_height: int = 15):
@@ -362,9 +372,7 @@ func handle_cell_click(cell: Cell, event: InputEventMouseButton):
     if not game_manager:
         print("ERROR: no game_manager")
         return
-    
-    print("Clicked cell (%d,%d) side=%d troops=%d" % [cell.x, cell.y, cell.side, cell.get_troop_count()])
-    
+        
     var cell_center = get_hex_center(cell)
     var direction_vec = (event.position - cell_center).normalized()
     var hex = get_hex_directions(cell.x)
