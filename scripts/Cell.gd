@@ -3,6 +3,9 @@ extends Resource
 
 # Core cell properties based on original xbattle
 const DEFAULT_CELL_SIZE: int = 50
+const TOWN_MIN: int = 50
+const MAX_TROOPS: int = 20
+
 @export var x: int = 0
 @export var y: int = 0
 @export var index: int = 0
@@ -72,7 +75,7 @@ func add_troops(count: int):
 # Get maximum troop capacity for this cell
 func get_max_capacity() -> int:
     # Default maxval from original, could be made configurable
-    return 20
+    return MAX_TROOPS
 
 # Check if cell is fighting (multiple sides present)
 func is_fighting() -> bool:
@@ -98,7 +101,7 @@ func get_movement_modifier() -> float:
 
 # Check if this cell is a town
 func is_town() -> bool:
-    return growth >= 50  # TOWN_MIN from original
+    return growth >= TOWN_MIN
 
 # Get direction vector count
 func get_active_directions() -> int:

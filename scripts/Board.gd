@@ -30,7 +30,7 @@ const terrain_colors = {
 @export var height: int = 15
 @export var border_width: int = 1
 @export var show_direction_vectors: bool = true
-@export var show_troop_numbers: bool = false
+@export var show_troop_numbers: bool = true
 
 # Cell storage
 var cell_height: int = Cell.DEFAULT_CELL_SIZE
@@ -44,6 +44,7 @@ var game_manager: GameManager
 # UI state
 var selected_cell: Cell = null
 var mouse_down: bool = false
+var hovered_cell: Cell = null
 
 func _init(board_width: int = 15, board_height: int = 15):
     width = board_width
@@ -56,6 +57,24 @@ func _ready():
     gui_input.connect(_on_gui_input)
     setup_initial_window()
     get_viewport().size_changed.connect(_on_viewport_resized)
+    set_process_input(true)
+
+func _input(event):
+    if event is InputEventKey and event.pressed and hovered_cell:
+        var command = key_to_command(event.keycode)
+        if command >= 0:
+            game_manager.on_cell_command(hovered_cell, command)
+
+func key_to_command(keycode: int) -> int:
+   match keycode:
+       KEY_A: return GameManager.CMD_ATTACK
+       KEY_D: return GameManager.CMD_DIG
+       KEY_F: return GameManager.CMD_FILL
+       KEY_B: return GameManager.CMD_BUILD
+       KEY_S: return GameManager.CMD_SCUTTLE
+       KEY_P: return GameManager.CMD_PARATROOPS
+       KEY_R: return GameManager.CMD_ARTILLERY
+       _: return -1
 
 func _on_viewport_resized():
     var viewport = get_viewport().get_visible_rect().size
@@ -387,11 +406,13 @@ func _on_gui_input(event):
             else:
                 mouse_down = false
     
-    elif event is InputEventMouseMotion and mouse_down:
-        var cell = get_cell_at_position(event.position)
-        if cell and cell != selected_cell:
-            selected_cell = cell
-            queue_redraw()
+    elif event is InputEventMouseMotion:
+        hovered_cell = get_cell_at_position(event.position)
+        if mouse_down:
+            var cell = hovered_cell
+            if cell and cell != selected_cell:
+                selected_cell = cell
+                queue_redraw()
 
 func handle_cell_click(cell: Cell, event: InputEventMouseButton):
     if not game_manager:

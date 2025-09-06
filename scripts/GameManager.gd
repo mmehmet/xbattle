@@ -1,6 +1,20 @@
 class_name GameManager
 extends Node
 
+# Command constants
+const CMD_ATTACK = 3
+const CMD_DIG = 6
+const CMD_FILL = 8
+const CMD_BUILD = 10
+const CMD_SCUTTLE = 12
+const CMD_PARATROOPS = 14
+const CMD_ARTILLERY = 16
+
+# Cost constants
+const COST_DIG = 20
+const COST_FILL = 15
+const COST_BUILD = 20
+
 # Game state
 @export var board: Board
 @export var current_player: int = 0
@@ -246,6 +260,76 @@ func on_cell_click(cell: Cell, direction_mask: int):
     
     cell_changed.emit(cell)
 
+func on_cell_command(cell: Cell, command: int):
+    if command != CMD_DIG and command != CMD_FILL and cell.side != current_player:
+        return
+
+    match command:
+        CMD_ATTACK: execute_attack(cell)
+        CMD_DIG: execute_dig(cell)
+        CMD_FILL: execute_fill(cell)
+        CMD_BUILD: execute_build(cell)
+        CMD_SCUTTLE: execute_scuttle(cell)
+        CMD_PARATROOPS: execute_paratroops(cell)
+        CMD_ARTILLERY: execute_artillery(cell)
+
+func execute_attack(cell: Cell):
+    # Basic attack - boost troop movement temporarily
+    for i in Cell.MAX_DIRECTIONS:
+        if cell.connections[i] != null:
+            cell.set_direction(i, true)
+    cell_changed.emit(cell)
+
+func execute_dig(cell: Cell):
+    if cell.level <= -2:  # Already at min depth
+        return
+       
+    # Find adjacent friendly cell with enough troops
+    for connection in cell.connections:
+        if connection != null and connection.side == current_player and connection.get_troop_count() >= COST_DIG:
+            connection.set_troops(connection.side, connection.get_troop_count() - COST_DIG)
+            cell.level -= 1
+            cell_changed.emit(cell)
+            cell_changed.emit(connection)
+            play_success_sound()
+            return
+
+func execute_fill(cell: Cell):
+    # Raise terrain level, costs troops
+    if cell.level > 2:
+        return # nothing left to fill
+
+    for connection in cell.connections:
+        if connection != null and connection.side == current_player and connection.get_troop_count() >= COST_FILL:
+            connection.set_troops(connection.side, connection.get_troop_count() - COST_FILL)
+            cell.level += 1
+            cell_changed.emit(cell)
+            cell_changed.emit(connection)
+            play_success_sound()
+            return
+
+func execute_build(cell: Cell):
+    # Build/upgrade town
+    if cell.get_troop_count() >= COST_BUILD:
+        cell.set_troops(cell.side, cell.get_troop_count() - COST_BUILD)
+        cell.growth = min(cell.growth + 25, 100)
+        cell_changed.emit(cell)
+        play_success_sound()
+
+func execute_scuttle(cell: Cell):
+    # Destroy all troops in cell
+    cell.set_troops(cell.side, 0)
+    cell.side = Cell.SIDE_NONE
+    cell_changed.emit(cell)
+
+func execute_paratroops(cell: Cell):
+    # TODO: Implement airborne assault
+    print("Paratroops not implemented yet")
+
+func execute_artillery(cell: Cell):
+    # TODO: Implement ranged attack
+    print("Artillery not implemented yet")
+
 # Game control functions
 func pause_game():
     is_paused = true
@@ -288,3 +372,13 @@ func toggle_decay(enabled: bool):
 func toggle_growth(enabled: bool):
     enable_growth = enabled
     print("Growth %s" % ("enabled" if enabled else "disabled"))
+
+# Misc
+func play_success_sound():
+    var audio = AudioStreamPlayer.new()
+    add_child(audio)
+    var beep = AudioStreamGenerator.new()
+    beep.mix_rate = 22050
+    audio.stream = beep
+    audio.play()
+    audio.finished.connect(func(): audio.queue_free())
