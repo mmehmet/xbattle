@@ -28,15 +28,15 @@ const terrain_colors = {
 # Board configuration
 @export var width: int = 15
 @export var height: int = 15
-@export var cell_size: int = Cell.DEFAULT_CELL_SIZE
 @export var border_width: int = 1
 @export var show_direction_vectors: bool = true
 @export var show_troop_numbers: bool = false
 
 # Cell storage
+var cell_height: int = Cell.DEFAULT_CELL_SIZE
+var cell_width = 2 * cell_height / sqrt(3)
 var cells: Array[Array] = []  # 2D array of Cell objects
 var cell_list: Array[Cell] = []  # 1D list for iteration
-var radius = cell_size * 0.577
 
 # Game reference
 var game_manager: GameManager
@@ -55,21 +55,12 @@ func _ready():
     set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     gui_input.connect(_on_gui_input)
     setup_initial_window()
-    var delme = get_viewport().get_visible_rect().size
-    print("window is NOW %d x %d" % [delme.x, delme.y])
     get_viewport().size_changed.connect(_on_viewport_resized)
 
 func _on_viewport_resized():
-    #calculate_scaling()
+    var viewport = get_viewport().get_visible_rect().size
+    calculate_scaling(viewport.x, viewport.y)
     queue_redraw()
-
-func setup_initial_window():
-    var hex_width = radius * 2
-    var board_width = width * hex_width
-    var board_height = height * cell_size + cell_size * 0.5
-    print("Calculated width: %d and height %d from %d x %d cell" % [board_width, board_height, hex_width, cell_size])
-    
-    get_window().size = Vector2i(int(board_width), int(board_height))
 
 func get_hex_directions(x: int) -> Array[Vector2i]:
     if x % 2 == 0:  # Even column
@@ -145,10 +136,25 @@ func get_cell_by_index(index: int) -> Cell:
     return null
 
 func get_cell_at_position(pos: Vector2) -> Cell:
-    var hex_width = radius * 2
-    var cell_x = int(pos.x / hex_width)
-    var cell_y = int((pos.y - (cell_x % 2) * cell_size * 0.5) / cell_size)
-    return get_cell(cell_x, cell_y)
+    # Rough grid position
+    var grid_x = int(pos.x / (cell_width * 0.75))
+    var grid_y = int((pos.y - (grid_x % 2) * cell_height * 0.5) / cell_height)
+    
+    # Check this cell and neighbors
+    for dx in range(-1, 2):
+        for dy in range(-1, 2):
+            var test_x = grid_x + dx
+            var test_y = grid_y + dy
+            var cell = get_cell(test_x, test_y)
+            if cell and point_in_hex(pos, cell):
+                return cell
+    
+    return null
+
+func point_in_hex(point: Vector2, cell: Cell) -> bool:
+    var center = get_hex_center(cell)
+    var distance = point.distance_to(center)
+    return distance <= cell_width * 0.5
 
 # TERRAIN GENERATION
 func generate_terrain(hill_density: int = 0, sea_density: int = 0, forest_density: int = 0):
@@ -168,7 +174,7 @@ func generate_terrain(hill_density: int = 0, sea_density: int = 0, forest_densit
 
 func place_random_towns(town_density: int):
     for cell in cell_list:
-        if cell.level <= 1 and town_density > 0 and randi() % 100 < town_density:
+        if cell.level >= 0 and town_density > 0 and randi() % 100 < town_density:
             cell.growth = 50 + randi() % 51
 
 func place_player_bases(player_count: int, base_count_per_player: int = 1):
@@ -201,14 +207,26 @@ func is_good_base_location(cell: Cell, player: int) -> bool:
     return true
 
 # RENDERING
-#func calculate_scaling():
-    #var viewport_size = get_viewport().get_visible_rect().size
-    #var wide = viewport_size.x / width
-    #var tall = viewport_size.y / height
-    #cell_size = min(wide, tall)
-    #radius = cell_size * 0.577
-    #hex_width = radius * 2
-    #print("Calculated cell_size: %d" % cell_size)
+func setup_initial_window():
+    var board_width = width * cell_width * 3 / 4 + cell_width / 4
+    var board_height = height * cell_height + cell_height * 0.5
+    print("window is %d x %d with %d x %d cell" % [board_width, board_height, cell_width, cell_height])
+    
+    get_window().size = Vector2i(int(board_width), int(board_height))
+
+func calculate_scaling(x: int, y: int):
+    # Scale to fit height
+    var height_scale = y / (height + 1)
+    
+    # Scale to fit width  
+    var board_width = width * 0.75 + 0.25
+    var width_scale = x / board_width
+    
+    # Use smaller scale
+    var scale = min(height_scale, width_scale / (2 / sqrt(3)))
+    
+    cell_height = int(scale)
+    cell_width = 2 * cell_height / sqrt(3)
 
 func _draw():
     draw_rect(Rect2(Vector2.ZERO, size), Color.BLACK)
@@ -252,20 +270,21 @@ func draw_cell(cell: Cell):
         draw_polyline(border_points, Color.WHITE, 3)
 
 func get_hex_center(cell: Cell) -> Vector2:
-    var hex_width = radius * 2
-    var x_pos = cell.x * hex_width
-    var y_pos = cell.y * cell_size + (cell.x % 2) * cell_size * 0.5
-    return Vector2(x_pos + radius, y_pos + cell_size * 0.5)
+    var x_radius = cell_width / 2
+    var y_radius = cell_height / 2
+    var x_pos = cell.x * cell_width * 0.75
+    var y_pos = cell.y * cell_height + (cell.x % 2) * y_radius
+    return Vector2(x_pos + x_radius, y_pos + y_radius)
 
 func get_hex_points(cell: Cell) -> PackedVector2Array:
-    var center = get_hex_center(cell)
-    var radius_sm = cell_size * 0.55
     var points = PackedVector2Array()
+    var center = get_hex_center(cell)
+    var radius = cell_width / 2
     
     for i in Cell.MAX_DIRECTIONS:
         var angle = PI / 3 * i
-        var x = center.x + cos(angle) * radius_sm
-        var y = center.y + sin(angle) * radius_sm
+        var x = center.x + cos(angle) * radius
+        var y = center.y + sin(angle) * radius
         points.append(Vector2(x, y))
     
     return points
@@ -275,9 +294,9 @@ func draw_owned_cell(cell: Cell, center: Vector2):
     var troop_count = cell.get_troop_count()
     
     if troop_count > 0:
-        var max_radius = cell_size * 0.3
+        var max_radius = cell_height * 0.3
         var radius = max_radius * (float(troop_count) / float(cell.get_max_capacity()))
-        radius = max(radius, 3.0)
+        radius = max(radius, 4.0)
         
         draw_circle(center, radius, player_color)
         
@@ -327,10 +346,9 @@ func draw_direction_vectors(cell: Cell):
     for i in cell.direction_vectors.size():
         if cell.direction_vectors[i]:
             var dir_vec = get_render_direction(i)
-            var end_pos = center + dir_vec * (cell_size * 0.3)
+            var end_pos = center + dir_vec * (cell_height * 0.3)
             
             draw_line(center, end_pos, Color.WHITE, 2.0)
-            draw_arrow_head(end_pos, dir_vec, Color.WHITE)
 
 func get_render_direction(direction_index: int) -> Vector2:
     # Convert logical grid directions to visual directions
@@ -342,16 +360,6 @@ func get_render_direction(direction_index: int) -> Vector2:
         4: return Vector2(0.866, 0.5)   # RIGHT_DOWN
         5: return Vector2(0.866, -0.5)  # RIGHT_UP
         _: return Vector2.ZERO
-
-func draw_arrow_head(pos: Vector2, direction: Vector2, color: Color):
-    var size = 4.0
-    var angle = direction.angle()
-    
-    var p1 = pos + Vector2(cos(angle + 2.5), sin(angle + 2.5)) * size
-    var p2 = pos + Vector2(cos(angle - 2.5), sin(angle - 2.5)) * size
-    
-    draw_line(pos, p1, color, 2.0)
-    draw_line(pos, p2, color, 2.0)
 
 func get_terrain_color(level: int) -> Color:
     if terrain_colors.has(level):
