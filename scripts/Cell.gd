@@ -2,6 +2,7 @@ class_name Cell
 extends Resource
 
 # Core cell properties based on original xbattle
+const DEFAULT_CELL_SIZE: int = 50
 @export var x: int = 0
 @export var y: int = 0
 @export var index: int = 0

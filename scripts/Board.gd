@@ -1,28 +1,7 @@
 class_name Board
 extends Control
 
-# Board configuration
-@export var width: int = 15
-@export var height: int = 15
-@export var cell_size: int = 32
-@export var border_width: int = 1
-@export var show_direction_vectors: bool = true
-@export var show_troop_numbers: bool = false
-
-# Cell storage
-var cells: Array[Array] = []  # 2D array of Cell objects
-var cell_list: Array[Cell] = []  # 1D list for iteration
-var col_width: float = 0.0
-
-# Game reference
-var game_manager: GameManager
-
-# UI state
-var selected_cell: Cell = null
-var mouse_down: bool = false
-
-# Colors
-
+# constants
 const player_colors = [
     Color.RED,      # Player 0
     Color.BLUE,     # Player 1  
@@ -46,6 +25,26 @@ const terrain_colors = {
     3: Color.LIGHT_GRAY         # High hills
 }
 
+# Board configuration
+@export var width: int = 15
+@export var height: int = 15
+@export var cell_size: int = Cell.DEFAULT_CELL_SIZE
+@export var border_width: int = 1
+@export var show_direction_vectors: bool = true
+@export var show_troop_numbers: bool = false
+
+# Cell storage
+var cells: Array[Array] = []  # 2D array of Cell objects
+var cell_list: Array[Cell] = []  # 1D list for iteration
+var radius = cell_size * 0.577
+
+# Game reference
+var game_manager: GameManager
+
+# UI state
+var selected_cell: Cell = null
+var mouse_down: bool = false
+
 func _init(board_width: int = 15, board_height: int = 15):
     width = board_width
     height = board_height
@@ -55,7 +54,22 @@ func _init(board_width: int = 15, board_height: int = 15):
 func _ready():
     set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     gui_input.connect(_on_gui_input)
-    calculate_scaling()
+    setup_initial_window()
+    var delme = get_viewport().get_visible_rect().size
+    print("window is NOW %d x %d" % [delme.x, delme.y])
+    get_viewport().size_changed.connect(_on_viewport_resized)
+
+func _on_viewport_resized():
+    #calculate_scaling()
+    queue_redraw()
+
+func setup_initial_window():
+    var hex_width = radius * 2
+    var board_width = width * hex_width
+    var board_height = height * cell_size + cell_size * 0.5
+    print("Calculated width: %d and height %d from %d x %d cell" % [board_width, board_height, hex_width, cell_size])
+    
+    get_window().size = Vector2i(int(board_width), int(board_height))
 
 func get_hex_directions(x: int) -> Array[Vector2i]:
     if x % 2 == 0:  # Even column
@@ -131,7 +145,8 @@ func get_cell_by_index(index: int) -> Cell:
     return null
 
 func get_cell_at_position(pos: Vector2) -> Cell:
-    var cell_x = int(pos.x / col_width)
+    var hex_width = radius * 2
+    var cell_x = int(pos.x / hex_width)
     var cell_y = int((pos.y - (cell_x % 2) * cell_size * 0.5) / cell_size)
     return get_cell(cell_x, cell_y)
 
@@ -186,13 +201,14 @@ func is_good_base_location(cell: Cell, player: int) -> bool:
     return true
 
 # RENDERING
-func calculate_scaling():
-    var viewport_size = get_viewport().get_visible_rect().size
-    var wide = viewport_size.x / width
-    var tall = viewport_size.y / height
-    cell_size = min(wide, tall) * 0.98
-    col_width = cell_size * 0.866
-    print("Calculated cell_size: %d" % cell_size)
+#func calculate_scaling():
+    #var viewport_size = get_viewport().get_visible_rect().size
+    #var wide = viewport_size.x / width
+    #var tall = viewport_size.y / height
+    #cell_size = min(wide, tall)
+    #radius = cell_size * 0.577
+    #hex_width = radius * 2
+    #print("Calculated cell_size: %d" % cell_size)
 
 func _draw():
     draw_rect(Rect2(Vector2.ZERO, size), Color.BLACK)
@@ -236,19 +252,20 @@ func draw_cell(cell: Cell):
         draw_polyline(border_points, Color.WHITE, 3)
 
 func get_hex_center(cell: Cell) -> Vector2:
-    var x_pos = cell.x * col_width
+    var hex_width = radius * 2
+    var x_pos = cell.x * hex_width
     var y_pos = cell.y * cell_size + (cell.x % 2) * cell_size * 0.5
-    return Vector2(x_pos + col_width * 0.5, y_pos + cell_size * 0.5)
+    return Vector2(x_pos + radius, y_pos + cell_size * 0.5)
 
 func get_hex_points(cell: Cell) -> PackedVector2Array:
     var center = get_hex_center(cell)
-    var radius = cell_size * 0.55
+    var radius_sm = cell_size * 0.55
     var points = PackedVector2Array()
     
     for i in Cell.MAX_DIRECTIONS:
         var angle = PI / 3 * i
-        var x = center.x + cos(angle) * radius
-        var y = center.y + sin(angle) * radius
+        var x = center.x + cos(angle) * radius_sm
+        var y = center.y + sin(angle) * radius_sm
         points.append(Vector2(x, y))
     
     return points
