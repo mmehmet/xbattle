@@ -3,7 +3,7 @@ extends Control
 signal game_ended
 
 var game_manager: GameManager
-var board_renderer: BoardRenderer
+var board: Board
 
 func setup_game(config: Dictionary):
     print("Setting up game with config: %s" % config)
@@ -12,27 +12,24 @@ func setup_game(config: Dictionary):
     game_manager = GameManager.new()
     add_child(game_manager)
     
-    # Create board renderer
-    board_renderer = BoardRenderer.new()
-    add_child(board_renderer)
-    
-    # Connect signals
-    game_manager.board_updated.connect(_on_board_updated)
-    game_manager.game_over.connect(_on_game_over)
-    
     # Start the game with configuration
     var map_size = config.get("map_size", Vector2i(15, 15))
     var player_count = config.get("player_count", 2)
     
     game_manager.start_new_game(map_size.x, map_size.y, player_count)
     
-    # Configure renderer
-    board_renderer.game_manager = game_manager
-    board_renderer.board = game_manager.board
+    # Use board from game manager
+    board = game_manager.board
+    add_child(board)
+    board.game_manager = game_manager
+    
+    # Connect signals
+    game_manager.board_updated.connect(_on_board_updated)
+    game_manager.game_over.connect(_on_game_over)
 
 func _on_board_updated():
-    if board_renderer:
-        board_renderer._on_board_updated()
+    if board:
+        board.on_board_updated()
 
 func _on_game_over(winner: int):
     print("Game over, winner: %d" % winner)

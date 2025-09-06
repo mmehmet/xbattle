@@ -234,16 +234,15 @@ func move_troops(source: Cell, dest: Cell, direction: int):
     cell_changed.emit(dest)
 
 # Player input handling
-func handle_cell_click(cell: Cell, direction_mask: int):
+func on_cell_click(cell: Cell, direction_mask: int):
     if cell.side != current_player:
         return
     
-    print("Cell clicked: (%d,%d) direction_mask: %d" % [cell.x, cell.y, direction_mask])
-    
-    # Set direction vectors based on input
+    # Toggle the clicked direction
     for i in Cell.MAX_DIRECTIONS:
-        var should_be_active = (direction_mask & (1 << i)) != 0
-        cell.set_direction(i, should_be_active)
+        if (direction_mask & (1 << i)) != 0:
+            var current_state = cell.direction_vectors[i]
+            cell.set_direction(i, not current_state)
     
     cell_changed.emit(cell)
 

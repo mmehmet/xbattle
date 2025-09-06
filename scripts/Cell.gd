@@ -37,7 +37,7 @@ var connections: Array[Cell] = []
 # Constants from original
 const SIDE_NONE = -1
 const SIDE_FIGHT = 11
-const MAX_DIRECTIONS = 8
+const MAX_DIRECTIONS = 6
 const MAX_SIDES = 11
 
 func _init():
