@@ -145,7 +145,10 @@ func show_lobby():
     right_panel.add_child(players_label)
     
     var panel = Panel.new()
-    panel.custom_minimum_size = Vector2(0, 32)
+    panel.custom_minimum_size = Vector2(0, 100)
+    var style = StyleBoxFlat.new()
+    style.bg_color = Color.BLACK
+    panel.add_theme_stylebox_override("panel", style)
     var margin = MarginContainer.new()
     margin.custom_minimum_size = Vector2(0, 100)
     margin.add_theme_constant_override("margin_left", 10)
@@ -252,8 +255,14 @@ func update_player_list():
     for i in range(players.size()):
         var player_info = players[i]
         var player_label = Label.new()
-        var prefix = "* " if player_info.is_host else "  "
-        player_label.text = "%s%s (Side %d)" % [prefix, player_info.name, i]
+        var prefix = "[HOSTING] " if player_info.is_host else "  "
+        player_label.text = "%s%s (Player %d)" % [prefix, player_info.name, i]
+        
+        # Set player color
+        if i < Board.player_colors.size():
+            var player_colour = Board.player_colors[i]
+            player_label.modulate = player_colour.lerp(Color.WHITE, 0.3)
+
         player_list.add_child(player_label)
     
     # Update start button
