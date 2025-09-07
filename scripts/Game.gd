@@ -5,12 +5,16 @@ signal game_ended
 var game_manager: GameManager
 var board: Board
 
-func setup_game(config: Dictionary):
+func setup_game(config: Dictionary, network_mgr: NetworkManager = null):
     print("Setting up game with config: %s" % config)
     
     # Create game manager
     game_manager = GameManager.new()
     add_child(game_manager)
+    
+    # Setup network if provided
+    if network_mgr:
+        game_manager.setup_network(network_mgr)
     
     # Start the game with configuration
     var map_size = config.get("map_size", Vector2i(Cell.DEFAULT_BOARD, Cell.DEFAULT_BOARD))

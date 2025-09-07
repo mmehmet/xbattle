@@ -1,6 +1,8 @@
 class_name GameManager
 extends Node
 
+var network_manager: NetworkManager
+
 # Command constants
 const CMD_ATTACK = 3
 const CMD_DIG = 6
@@ -348,6 +350,10 @@ func resume_game():
 func set_game_speed(speed: float):
     game_speed = clamp(speed, 0.1, 5.0)
     print("Game speed set to %fx" % game_speed)
+
+func setup_network(nm: NetworkManager):
+    network_manager = nm
+    nm.set_game_manager(self)
 
 # Get game statistics
 func get_game_stats() -> Dictionary:

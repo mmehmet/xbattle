@@ -1,7 +1,5 @@
 extends Control
 
-signal game_started(config: Dictionary)
-
 # Game state
 enum GameState { SETUP, JOINING, IN_LOBBY }
 var current_state: GameState = GameState.SETUP
@@ -13,6 +11,14 @@ var show_troop_numbers: bool = false
 var terrain: Dictionary
 
 # Networking
+var network_manager: NetworkManager:
+    set(value):
+        network_manager = value
+        if network_manager:
+            network_manager.lobby_updated.connect(_on_lobby_updated)
+            network_manager.player_joined.connect(_on_player_joined)
+            network_manager.player_left.connect(_on_player_left)
+
 var is_host: bool = false
 var players: Array = []
 var player_name: String = ""
@@ -174,13 +180,14 @@ func show_lobby():
         right_panel.add_child(start_button)
     
         add_spacer(right_panel, 10)
-        
-        var cancel_button = Button.new()
-        cancel_button.text = "CANCEL HOSTING"
-        cancel_button.pressed.connect(_on_cancel_host)
-        right_panel.add_child(cancel_button)
     
-    update_player_list()
+    if players.size() > 0:
+        var cancel_button = Button.new()
+        cancel_button.text = "CANCEL HOSTING" if is_host else "DISCONNECT"
+        cancel_button.pressed.connect(_on_cancel_host if is_host else _on_leave_lobby)
+        right_panel.add_child(cancel_button)
+
+    var has_players = update_player_list()
 
 func show_setup_screen():
     clear_main_content(left_panel)
@@ -244,23 +251,20 @@ func show_setup_screen():
     left_panel.add_child(join_button)
 
 func update_player_list():
-    if not player_list:
+    if not player_list or not network_manager:
         return
     
     # Clear existing list
     for child in player_list.get_children():
         child.queue_free()
     
-    # Add players
-    for i in range(players.size()):
-        var player_info = players[i]
+    for player_info in players:
         var player_label = Label.new()
-        var prefix = "[HOSTING] " if player_info.is_host else "  "
-        player_label.text = "%s%s (Player %d)" % [prefix, player_info.name, i]
+        var suffix = " [HOSTING]" if player_info.is_host else ""
+        player_label.text = "%d: %s%s" % [player_info.side, player_info.name, suffix]
         
-        # Set player color
-        if i < Board.player_colors.size():
-            var player_colour = Board.player_colors[i]
+        if player_info.side < Board.player_colors.size():
+            var player_colour = Board.player_colors[player_info.side]
             player_label.modulate = player_colour.lerp(Color.WHITE, 0.3)
 
         player_list.add_child(player_label)
@@ -280,7 +284,7 @@ func add_spacer(parent: Control, height: int):
 
 # Event handlers
 func update_buttons():
-    var should_disable = is_host or (current_state == GameState.JOINING)
+    var should_disable = players.size() > 0
     host_button.disabled = should_disable
     join_button.disabled = should_disable
 
@@ -303,20 +307,20 @@ func _on_cancel_joining():
     show_lobby()
 
 func _confirm_cancel_host():
-   is_host = false
-   players.clear()
-   show_lobby()
-   # TODO: Disconnect network server
+    network_manager.stop_hosting()
+    is_host = false
+    players.clear()
+    show_lobby()
 
 func _on_host_game():
     player_name = player_name_input.text.strip_edges()
     if player_name.is_empty():
         player_name = "Host"
     
-    is_host = true
-    players = [{"name": player_name, "is_host": true}]
-    show_lobby()
-    # TODO: Start network server
+    if network_manager.host_game(player_name):
+        is_host = true
+        players = [{"name": player_name, "is_host": true, "side": 0}]
+        show_lobby()
 
 func _on_join_game():
     player_name = player_name_input.text.strip_edges()
@@ -330,15 +334,30 @@ func _on_connect_to_host():
     if address.is_empty():
         return
     
-    is_host = false
+    player_name = player_name_input.text.strip_edges()
+    if player_name.is_empty():
+        player_name = "Anonymous"
+
+    network_manager.join_game(player_name, address)
+    players = [{"name": player_name, "is_host": false, "side": -1}]
     show_lobby()
-    # TODO: Connect to network server
 
 func _on_leave_lobby():
+    network_manager.disconnect_from_game()
     players.clear()
     is_host = false
-    show_setup_screen()
-    # TODO: Disconnect from network
+    show_lobby()
+
+func _on_player_joined(player_info: Dictionary):
+    update_player_list()
+
+func _on_player_left(player_info: Dictionary):
+    players = players.filter(func(p): return p.peer_id != player_info.peer_id)
+    update_player_list()
+
+func _on_lobby_updated(player_list: Array):
+    players = player_list
+    update_player_list()
 
 func _on_start_multiplayer_game():
     if players.size() < 2:
@@ -355,7 +374,7 @@ func _on_start_multiplayer_game():
         "town_density": terrain.town,
     }
     
-    game_started.emit(config)
+    network_manager.start_network_game(config)
 
 func _input(event):
     if event is InputEventKey and event.pressed:
