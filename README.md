@@ -17,7 +17,7 @@ typedef struct {
     s_char level;             // Terrain elevation
     s_char growth;            // Town production rate (0-255)
     s_char move;              // Number of active direction vectors
-    s_char *dir;              // Direction vector array [0-7 directions]
+    s_char *dir;              // Direction vector array [0-6 directions]
     s_char age;               // How long owned by same side
     // ... plus march, visibility, etc.
 } cell_type;
@@ -44,9 +44,9 @@ nmove = surplus *
 
 ### Key Game Constants
 ```c
-#define MAX_PLAYERS         11
-#define MAX_DIRECTIONS      8
-#define MAX_MAXVAL         50  // Max troops per cell
+#define MAX_PLAYERS        11
+#define MAX_DIRECTIONS      6
+#define MAXVAL             50  // Max troops per cell
 #define TOWN_MIN           50  // Minimum town production
 #define TOWN_MAX          100  // Maximum town production
 
