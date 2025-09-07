@@ -13,15 +13,16 @@ func setup_game(config: Dictionary):
     add_child(game_manager)
     
     # Start the game with configuration
-    var map_size = config.get("map_size", Vector2i(15, 15))
+    var map_size = config.get("map_size", Vector2i(Cell.DEFAULT_BOARD, Cell.DEFAULT_BOARD))
     var player_count = config.get("player_count", 2)
     
-    game_manager.start_new_game(map_size.x, map_size.y, player_count)
+    game_manager.start_new_game(config)
     
     # Use board from game manager
     board = game_manager.board
     add_child(board)
     board.game_manager = game_manager
+    board.show_troop_numbers = config.show_troop_numbers
     
     # Connect signals
     game_manager.board_updated.connect(_on_board_updated)
@@ -33,8 +34,33 @@ func _on_board_updated():
 
 func _on_game_over(winner: int):
     print("Game over, winner: %d" % winner)
-    # For now, return to start screen after 3 seconds
-    await get_tree().create_timer(3.0).timeout
+    
+    var viewport = get_window().get_visible_rect().size
+    var panel = Panel.new()
+    var style = StyleBoxFlat.new()
+    panel.size = Vector2(viewport.x, viewport.y)
+    panel.position = Vector2(0, 0)
+    style.bg_color = Color(0.5, 0.5, 0.5, 0.5)
+    panel.add_theme_stylebox_override("panel", style)
+    add_child(panel)
+    
+    var vbox = VBoxContainer.new()
+    vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    vbox.add_theme_constant_override("separation", 20)
+    panel.add_child(vbox)
+    
+    var label = Label.new()
+    label.text = "Player %d Wins!" % winner if winner >= 0 else "Draw!"
+    label.add_theme_font_size_override("font_size", 48)
+    label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    vbox.add_child(label)
+    
+    var button = Button.new()
+    button.text = "Return to Menu"
+    button.pressed.connect(func(): game_ended.emit())
+    vbox.add_child(button)
+    
+    await get_tree().create_timer(5.0).timeout
     game_ended.emit()
 
 func _input(event):

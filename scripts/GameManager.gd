@@ -11,9 +11,9 @@ const CMD_PARATROOPS = 14
 const CMD_ARTILLERY = 16
 
 # Cost constants
-const COST_DIG = 20
-const COST_FILL = 15
-const COST_BUILD = 20
+const COST_DIG = 30
+const COST_FILL = 20
+const COST_BUILD = 25
 
 # Game state
 @export var board: Board
@@ -23,9 +23,9 @@ const COST_BUILD = 20
 @export var is_paused: bool = false
 
 # Game configuration (from original xbattle constants)
-@export var fight_intensity: int = 5
-@export var move_speed: int = 3
-@export var max_troop_capacity: int = 20
+@export var fight_intensity: int = Cell.DEFAULT_FIGHT
+@export var move_speed: int = Cell.DEFAULT_MOVE
+@export var max_troop_capacity: int = Cell.MAX_MAXVAL
 @export var enable_decay: bool = false
 @export var enable_growth: bool = true
 
@@ -42,19 +42,21 @@ func _ready():
     print("GameManager ready")
 
 # Initialize a new game
-func start_new_game(board_width: int = 15, board_height: int = 15, players: int = 2):
-    print("Starting new game: %dx%d board, %d players" % [board_width, board_height, players])
+func start_new_game(config: Dictionary):
+    var width = config.map_size.x
+    var height = config.map_size.y
+    player_count = config.player_count
+    print("Starting new game: %dx%d board, %d players" % [width, height, player_count])
     
-    player_count = players
     current_player = 0
     is_paused = false
     
     # Create the board
-    board = Board.new(board_width, board_height)
+    board = Board.new(width, height)
     
     # Generate terrain and features
-    board.generate_terrain(10, 5, 0)  # 10% hills, 5% sea
-    board.place_random_towns(3)  # 3% town density
+    board.generate_terrain(config.hill_density, config.sea_density, config.forest_density)
+    board.place_random_towns(config.town_density)
     board.place_player_bases(player_count, 1)  # 1 base per player
     
     print("Game started with %d players" % player_count)
@@ -109,7 +111,7 @@ func update_cell_growth(cell: Cell):
         var growth_chance = cell.growth
         
         # Super towns can produce multiple troops per turn
-        if cell.growth > 100:
+        if cell.growth > Cell.TOWN_MAX:
             var guaranteed_troops = cell.growth / 100
             cell.add_troops(guaranteed_troops)
             growth_chance = cell.growth % 100
@@ -141,7 +143,7 @@ func update_cell_combat(cell: Cell):
     
     # Get all sides with troops in this cell
     var sides_with_troops = {}
-    for side in Cell.MAX_SIDES:
+    for side in Cell.MAX_PLAYERS:
         if cell.troop_values[side] > 0:
             sides_with_troops[side] = cell.troop_values[side]
     
@@ -197,8 +199,8 @@ func update_cell_movement(cell: Cell):
 
 # Move troops between cells (core movement logic)
 func move_troops(source: Cell, dest: Cell, direction: int):
-    if dest.level < 0:  # Can't move into sea
-        return
+    if dest.level < Board.FLAT_LAND:
+        return # Can't move into sea
     
     var source_troops = source.get_troop_count()
     var movable_troops = source_troops - source.lowbound
@@ -208,7 +210,8 @@ func move_troops(source: Cell, dest: Cell, direction: int):
     
     # Calculate movement amount (simplified from original complex formula)
     var movement_modifier = dest.get_movement_modifier()
-    var move_amount = int(float(movable_troops) * movement_modifier * 0.3)  # 30% movement rate
+    var rate = move_speed * 0.1 # 30% movement rate by default
+    var move_amount = int(float(movable_troops) * movement_modifier * rate)
     
     # Add randomness for small movements
     if move_amount == 0 and randf() < 0.3:
@@ -281,8 +284,8 @@ func execute_attack(cell: Cell):
     cell_changed.emit(cell)
 
 func execute_dig(cell: Cell):
-    if cell.level <= -2:  # Already at min depth
-        return
+    if cell.level <= Board.DEEP_SEA:
+        return # Already at min depth
        
     # Find adjacent friendly cell with enough troops
     for connection in cell.connections:
@@ -296,7 +299,7 @@ func execute_dig(cell: Cell):
 
 func execute_fill(cell: Cell):
     # Raise terrain level, costs troops
-    if cell.level > 2:
+    if cell.level > Board.HIGH_HILLS:
         return # nothing left to fill
 
     for connection in cell.connections:
@@ -310,9 +313,12 @@ func execute_fill(cell: Cell):
 
 func execute_build(cell: Cell):
     # Build/upgrade town
+    if cell.growth >= Cell.TOWN_MAX:
+        return
+
     if cell.get_troop_count() >= COST_BUILD:
         cell.set_troops(cell.side, cell.get_troop_count() - COST_BUILD)
-        cell.growth = min(cell.growth + 25, 100)
+        cell.growth = min(cell.growth + 25, Cell.TOWN_MAX)
         cell_changed.emit(cell)
         play_success_sound()
 
@@ -375,10 +381,8 @@ func toggle_growth(enabled: bool):
 
 # Misc
 func play_success_sound():
-    var audio = AudioStreamPlayer.new()
-    add_child(audio)
-    var beep = AudioStreamGenerator.new()
-    beep.mix_rate = 22050
-    audio.stream = beep
-    audio.play()
-    audio.finished.connect(func(): audio.queue_free())
+   var audio = AudioStreamPlayer.new()
+   add_child(audio)
+   audio.stream = load("res://assets/dirt.mp3")
+   audio.play()
+   audio.finished.connect(func(): audio.queue_free())

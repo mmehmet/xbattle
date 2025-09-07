@@ -3,8 +3,9 @@ extends Control
 signal game_started(config: Dictionary)
 
 # Configuration
-var selected_map_size: Vector2i = Vector2i(15, 15)
+var selected_map_size: Vector2i = Vector2i(Cell.DEFAULT_BOARD, Cell.DEFAULT_BOARD)
 var enable_wrapping: bool = false
+var show_troop_numbers: bool = true
 var terrain: Dictionary
 
 # Map options
@@ -18,7 +19,8 @@ const map_sizes = [
 const TERRAIN_LIMITS = {
     "hill": {"max": 30, "min": 10},
     "sea": {"max": 20, "min": 5}, 
-    "town": {"max": 15, "min": 5}
+    "town": {"max": 12, "min": 6},
+    "forest": {"max": 20, "min": 5},
 }
 
 func _ready():
@@ -27,6 +29,7 @@ func _ready():
 func setup_ui():
     terrain = {
         "hill": randi_range(TERRAIN_LIMITS.hill.min, TERRAIN_LIMITS.hill.max),
+        "forest": randi_range(TERRAIN_LIMITS.forest.min, TERRAIN_LIMITS.forest.max),
         "sea": randi_range(TERRAIN_LIMITS.sea.min, TERRAIN_LIMITS.sea.max),
         "town": randi_range(TERRAIN_LIMITS.town.min, TERRAIN_LIMITS.town.max),
     }
@@ -63,10 +66,19 @@ func setup_ui():
     
     # Game info
     var info_label = Label.new()
-    info_label.text = "• %d%% Hills\n• %d%% Sea\n• %d%% Towns" % [terrain.hill, terrain.sea, terrain.town]
+    info_label.text = "• %d%% Hills\n• %d%% Forest\n• %d%% Sea\n• %d%% Towns" % [terrain.hill, terrain.forest, terrain.sea, terrain.town]
     vbox.add_child(info_label)
     
     add_spacer(vbox, 20)
+    
+    # Troop numbers
+    var troop_numbers_checkbox = CheckBox.new()
+    troop_numbers_checkbox.text = "Show Troop Numbers"
+    troop_numbers_checkbox.button_pressed = show_troop_numbers
+    troop_numbers_checkbox.toggled.connect(_on_troop_numbers_toggled)
+    vbox.add_child(troop_numbers_checkbox)
+    
+    add_spacer(vbox, 30)
     
     # Edge wrapping
     var wrap_checkbox = CheckBox.new()
@@ -96,12 +108,17 @@ func _on_map_size_selected(index: int):
 func _on_wrapping_toggled(enabled: bool):
     enable_wrapping = enabled
 
+func _on_troop_numbers_toggled(enabled: bool):
+    show_troop_numbers = enabled
+
 func _on_start_game():
     var config = {
         "map_size": selected_map_size,
         "enable_wrapping": enable_wrapping,
+        "show_troop_numbers": show_troop_numbers,
         "player_count": 2,
         "hill_density": terrain.hill,
+        "forest_density": terrain.forest,
         "sea_density": terrain.sea,
         "town_density": terrain.town,
     }

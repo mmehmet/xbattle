@@ -1,27 +1,39 @@
 class_name Cell
 extends Resource
 
-# Core cell properties based on original xbattle
-const DEFAULT_CELL_SIZE: int = 50
+# Constants based on original xbattle
+const MAX_PLAYERS = 11
+const MAX_DIRECTIONS = 6
+const MAX_MAXVAL: int = 50 # max troops per cell
 const TOWN_MIN: int = 50
-const MAX_TROOPS: int = 20
+const TOWN_MAX: int = 100
+
+const DEFAULT_BOARD: int = 15
+const DEFAULT_CELL_SIZE: int = 50
+const DEFAULT_MAXVAL: int = 20
+const DEFAULT_FIGHT: int = 5 # combat intensity
+const DEFAULT_MOVE: int = 3 # movement speed
+const MOVE_PENALTY = 0.2
+
+const SIDE_NONE = -1
+const SIDE_FIGHT = 11
 
 @export var x: int = 0
 @export var y: int = 0
 @export var index: int = 0
 
 # Ownership and troops
-@export var side: int = -1  # -1 = SIDE_NONE, 11 = SIDE_FIGHT
+@export var side: int = SIDE_NONE
 @export var troop_values: Array[int] = []  # Troops per side [0-maxval]
-@export var old_side: int = -1
+@export var old_side: int = SIDE_NONE
 
 # Terrain
-@export var level: int = 0  # Terrain elevation (-sea to +hills)
+@export var level: int = Board.FLAT_LAND  # Terrain elevation (-sea to +hills)
 @export var growth: int = 0  # Town production rate (0-255)
 
 # Movement
 @export var move: int = 0  # Number of active direction vectors
-@export var direction_vectors: Array[bool] = []  # [0-7 directions]
+@export var direction_vectors: Array[bool] = []  # [0-6 directions]
 @export var age: int = 0  # How long owned by same side
 
 # Combat state
@@ -38,44 +50,38 @@ const MAX_TROOPS: int = 20
 # Connections to adjacent cells
 var connections: Array[Cell] = []
 
-# Constants from original
-const SIDE_NONE = -1
-const SIDE_FIGHT = 11
-const MAX_DIRECTIONS = 6
-const MAX_SIDES = 11
-
 func _init():
     # Initialize arrays
-    troop_values.resize(MAX_SIDES)
+    troop_values.resize(MAX_PLAYERS)
     troop_values.fill(0)
     direction_vectors.resize(MAX_DIRECTIONS)
     direction_vectors.fill(false)
-    seen_by.resize(MAX_SIDES)
+    seen_by.resize(MAX_PLAYERS)
     seen_by.fill(false)
     connections.resize(MAX_DIRECTIONS)
 
 # Get total troops for the owning side
 func get_troop_count() -> int:
-    if side < 0 or side >= MAX_SIDES:
+    if side < 0 or side >= MAX_PLAYERS:
         return 0
     return troop_values[side]
 
 # Set troops for a specific side
 func set_troops(new_side: int, count: int):
-    if new_side >= 0 and new_side < MAX_SIDES:
+    if new_side >= 0 and new_side < MAX_PLAYERS:
         troop_values[new_side] = count
         if count > 0 and side == SIDE_NONE:
             side = new_side
 
 # Add troops to current owner
 func add_troops(count: int):
-    if side >= 0 and side < MAX_SIDES:
+    if side >= 0 and side < MAX_PLAYERS:
         troop_values[side] = min(troop_values[side] + count, get_max_capacity())
 
 # Get maximum troop capacity for this cell
 func get_max_capacity() -> int:
     # Default maxval from original, could be made configurable
-    return MAX_TROOPS
+    return MAX_MAXVAL
 
 # Check if cell is fighting (multiple sides present)
 func is_fighting() -> bool:
@@ -92,12 +98,10 @@ func can_produce_troops() -> bool:
 # Get movement speed modifier based on terrain
 func get_movement_modifier() -> float:
     # Hills slow movement, sea blocks it
-    if level < 0:  # Sea
+    if level <= Board.SHALLOW_SEA:
         return 0.0
-    elif level > 0:  # Hills
-        return 1.0 - (level * 0.1)
-    else:  # Flat
-        return 1.0
+    else:
+        return 1.0 - (level * MOVE_PENALTY)
 
 # Check if this cell is a town
 func is_town() -> bool:

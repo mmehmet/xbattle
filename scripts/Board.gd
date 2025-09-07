@@ -16,13 +16,20 @@ const player_colors = [
     Color.GRAY      # Player 10
 ]
 
+const DEEP_SEA = -2
+const SHALLOW_SEA = -1
+const FLAT_LAND = 0
+const FOREST = 1
+const LOW_HILLS = 2
+const HIGH_HILLS = 3
+
 const terrain_colors = {
-    -2: Color.CORNFLOWER_BLUE,  # Deep sea
-    -1: Color.LIGHT_BLUE,       # Shallow sea
-    0: Color(0.8, 0.8, 0.4),    # Flat land
-    1: Color.DARK_SEA_GREEN,    # Low bush
-    2: Color.SEA_GREEN,         # Medium hills
-    3: Color.LIGHT_GRAY         # High hills
+    DEEP_SEA: Color.CORNFLOWER_BLUE,
+    SHALLOW_SEA: Color.LIGHT_BLUE,
+    FLAT_LAND: Color(0.8, 0.8, 0.4),
+    FOREST: Color.DARK_SEA_GREEN,
+    LOW_HILLS: Color.SEA_GREEN,
+    HIGH_HILLS: Color.LIGHT_GRAY
 }
 
 # Board configuration
@@ -60,10 +67,14 @@ func _ready():
     set_process_input(true)
 
 func _input(event):
-    if event is InputEventKey and event.pressed and hovered_cell:
-        var command = key_to_command(event.keycode)
-        if command >= 0:
-            game_manager.on_cell_command(hovered_cell, command)
+    if event is InputEventKey and event.pressed:
+        if event.keycode == KEY_T:
+            show_troop_numbers = !show_troop_numbers
+            queue_redraw()
+        elif hovered_cell:
+            var command = key_to_command(event.keycode)
+            if command >= 0:
+                game_manager.on_cell_command(hovered_cell, command)
 
 func key_to_command(keycode: int) -> int:
    match keycode:
@@ -176,20 +187,24 @@ func point_in_hex(point: Vector2, cell: Cell) -> bool:
     return distance <= cell_width * 0.5
 
 # TERRAIN GENERATION
-func generate_terrain(hill_density: int = 0, sea_density: int = 0, forest_density: int = 0):
+func generate_terrain(hill_density: float, sea_density: float, forest_density: float):
     var noise = FastNoiseLite.new()
     noise.seed = randi()
     noise.frequency = 0.1
     
     for cell in cell_list:
         var noise_value = noise.get_noise_2d(cell.x, cell.y)
+        var rand = randf() * 100.0
         
-        if noise_value > 0.3:
-            cell.level = 1 + int((noise_value - 0.3) * 10)
-        elif noise_value < -0.4:
-            cell.level = -1 - int(abs(noise_value + 0.4) * 5)
+        # Use noise to bias terrain placement
+        if noise_value < -0.4 and rand < sea_density * 2:
+            cell.level = SHALLOW_SEA + (randi() % 2) * (DEEP_SEA - SHALLOW_SEA)
+        elif noise_value > 0.3 and rand < hill_density * 2:
+            cell.level = LOW_HILLS + (randi() % 2)
+        elif noise_value > 0.1 and noise_value < 0.3 and rand < forest_density * 2:
+            cell.level = FOREST
         else:
-            cell.level = 0
+            cell.level = FLAT_LAND
 
 func place_random_towns(town_density: int):
     for cell in cell_list:
@@ -267,7 +282,7 @@ func draw_cell(cell: Cell):
         draw_polyline(border_points, Color.BLACK, border_width)
     
     # Troops
-    if cell.side >= 0 and cell.side < Cell.MAX_SIDES:
+    if cell.side >= 0 and cell.side < Cell.MAX_PLAYERS:
         var center = get_hex_center(cell)
         if cell.is_fighting():
             draw_fighting_cell(cell, center)
@@ -328,7 +343,7 @@ func draw_owned_cell(cell: Cell, center: Vector2):
 
 func draw_fighting_cell(cell: Cell, center: Vector2):
     var sides_with_troops = []
-    for side in Cell.MAX_SIDES:
+    for side in Cell.MAX_PLAYERS:
         if cell.troop_values[side] > 0:
             sides_with_troops.append(side)
     
@@ -457,7 +472,7 @@ func check_victory() -> int:
     var active_sides = {}
     
     for cell in cell_list:
-        if cell.side >= 0 and cell.side < Cell.MAX_SIDES and cell.get_troop_count() > 0:
+        if cell.side >= 0 and cell.side < Cell.MAX_PLAYERS and cell.get_troop_count() > 0:
             active_sides[cell.side] = true
     
     var active_count = active_sides.size()
