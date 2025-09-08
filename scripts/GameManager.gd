@@ -253,6 +253,8 @@ func move_troops(source: Cell, dest: Cell):
         dest.side = source.side
         dest.set_troops(source.side, move_amount)
         dest.age = 0
+        if network_manager:
+            network_manager.on_player_moved(dest.side, board.get_cells_for_side(dest.side))  # horizon has changed
     elif dest.side == source.side:
         # Moving into friendly cell
         dest.add_troops(move_amount)
@@ -263,9 +265,6 @@ func move_troops(source: Cell, dest: Cell):
     
     cell_changed.emit(source)
     cell_changed.emit(dest)
-
-    if network_manager:
-        network_manager.on_player_moved(source.side, board.get_cells_for_side(source.side))
 
 func on_cell_click(cell: Cell, direction_mask: int):
     if cell.side != current_player:
@@ -370,7 +369,7 @@ func setup_network(nm: NetworkManager):
     nm.set_game_manager(self)
     nm.player_left.connect(_check_victory.bind())
 
-func _check_victory():
+func _check_victory(player_info: Dictionary = {}):
     if network_manager.get_player_count() == 1:
         var remaining_players = network_manager.players.values()
         var winner = remaining_players[0].side

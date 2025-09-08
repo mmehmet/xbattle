@@ -243,57 +243,39 @@ func _receive_board_data(board_data: Dictionary):
 func set_game_manager(gm: GameManager):
     game_manager = gm
 
-func on_player_moved(player: int, owned_cells: Array[Cell]):
+func on_player_moved(player, owned_cells):
     if not is_host:
         return
     
-    var new_horizon = calculate_horizon_boundary(owned_cells)
-    var old_horizon = player_horizons.get(player, [])
-    
-    if horizon_changed(old_horizon, new_horizon):
-        player_horizons[player] = new_horizon
-        check_horizon_overlaps(player, new_horizon)
+    print("player moved")
+    player_horizons[player] = calculate_horizon(player, owned_cells)
+    get_overlap(player)
 
-func calculate_horizon_boundary(owned_cells: Array[Cell]) -> Array[Vector2i]:
-    var horizon_cells: Array[Vector2i] = []
+func calculate_horizon(player, owned_cells) -> Array[Vector2i]:
+    var horizon: Dictionary = {}
     
-    for owned_cell in owned_cells:
-        for cell in game_manager.board.cell_list:
-            if owned_cell.get_distance(cell) <= Cell.HORIZON:
-                var pos = Vector2i(cell.x, cell.y)
-                if not horizon_cells.has(pos):
-                    horizon_cells.append(pos)
+    # Single pass: add all boundary cells to set
+    for cell in owned_cells:
+        for dx in range(-Cell.HORIZON, Cell.HORIZON + 1):
+            for dy in range(-Cell.HORIZON, Cell.HORIZON + 1):
+                var target_x = cell.x + dx
+                var target_y = cell.y + dy
+                if game_manager.board.is_valid_position(Vector2i(target_x, target_y)):
+                    horizon[Vector2i(target_x, target_y)] = true
     
-    return horizon_cells
+    return horizon.keys()
 
-func horizon_changed(old_horizon: Array, new_horizon: Array) -> bool:
-    if old_horizon.size() != new_horizon.size():
-        return true
-    
-    for pos in new_horizon:
-        if not old_horizon.has(pos):
-            return true
-    
-    return false
-
-func check_horizon_overlaps(moved_player: int, moved_horizon: Array[Vector2i]):
-    for other_player_info in players.values():
-        var other_player = other_player_info.side
-        if other_player == moved_player:
-            continue
-        
-        var other_horizon = player_horizons.get(other_player, [] as Array[Vector2i])
-        var overlap = get_horizon_intersection(moved_horizon, other_horizon)
-        
-        if overlap.size() > 0:
-            send_visibility_update(other_player_info.peer_id, moved_player, overlap)
-        
-func get_horizon_intersection(horizon1: Array[Vector2i], horizon2: Array[Vector2i]) -> Array[Vector2i]:
-    var intersection: Array[Vector2i] = []
-    for pos in horizon1:
-        if horizon2.has(pos):
-            intersection.append(pos)
-    return intersection
+func get_overlap(moved_player: int):
+    var horizon1 = player_horizons[moved_player]
+    for player_info in players.values().filter(func(p): return p.side != moved_player):
+        var other_player = player_info.side
+        var horizon2 = player_horizons.get(other_player, [] as Array[Vector2i])
+        var overlap: Array[Vector2i] = []
+        for pos in horizon1:
+            if horizon2.has(pos):
+                overlap.append(pos)
+        if overlap.size():
+            send_visibility_update(player_info.peer_id, moved_player, overlap)
 
 func send_visibility_update(to_peer_id: int, about_player: int, visible_positions: Array[Vector2i]):
     var update_data = []
