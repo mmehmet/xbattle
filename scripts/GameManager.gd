@@ -23,7 +23,6 @@ const COST_BUILD = 25
 @export var player_count: int = 2
 @export var game_speed: float = 1.0
 @export var is_paused: bool = false
-@export var is_simulation_host: bool = true
 
 # Game configuration (from original xbattle constants)
 @export var fight_intensity: int = Cell.DEFAULT_FIGHT
@@ -32,7 +31,6 @@ const COST_BUILD = 25
 @export var enable_decay: bool = false
 @export var enable_growth: bool = true
 
-# Update timing
 var update_timer: float = 0.0
 var update_interval: float = 0.5  # Updates per second
 
@@ -63,7 +61,6 @@ func start_new_game(config: Dictionary):
     if config.has("board_data"):
         # Client: receive board from host
         board = _deserialize_board(config.board_data)
-        is_simulation_host = false
         print("Client received board from host, playing as side %d" % current_player)
     else:
         # Host: generate new board
@@ -71,13 +68,13 @@ func start_new_game(config: Dictionary):
         board.generate_terrain(config.hill_density, config.sea_density, config.forest_density)
         board.place_random_towns(config.town_density)
         board.place_player_bases(player_count, 1)
-        is_simulation_host = true
         print("Host generated board, playing as side %d" % current_player)
     
     board_updated.emit()
+    board.update_fog(current_player)
 
 func _process(delta):
-    if not board or is_paused or not is_simulation_host:
+    if not board or is_paused:
         return
     
     update_timer += delta * game_speed
@@ -89,6 +86,9 @@ func _process(delta):
 func update_board():
     if not board:
         return
+    
+    # Update fog of war visibility
+    board.update_fog(current_player)
     
     # Randomize update order (important for fairness)
     var cell_order = board.cell_list.duplicate()
@@ -264,7 +264,9 @@ func move_troops(source: Cell, dest: Cell):
     cell_changed.emit(source)
     cell_changed.emit(dest)
 
-# Player input handling
+    if network_manager:
+        network_manager.on_player_moved(source.side, board.get_cells_for_side(source.side))
+
 func on_cell_click(cell: Cell, direction_mask: int):
     if cell.side != current_player:
         return

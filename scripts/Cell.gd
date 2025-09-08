@@ -15,8 +15,9 @@ const DEFAULT_FIGHT: int = 5 # combat intensity
 const DEFAULT_MOVE: int = 3 # movement speed
 const MOVE_PENALTY = 0.2
 
-const SIDE_NONE = -1
-const SIDE_FIGHT = 11
+const SIDE_NONE: int = -1
+const SIDE_FIGHT: int = 11
+const HORIZON: int = 2
 
 @export var x: int = 0
 @export var y: int = 0
@@ -131,6 +132,43 @@ func set_direction(dir: int, active: bool):
 func clear_directions():
     direction_vectors.fill(false)
     move = 0
+
+# Calculate if this cell should be visible to a player
+func player_visibility(player: int, board):
+    seen_by[player] = false
+    
+    # Always see cells we own
+    if side == player:
+        seen_by[player] = true
+        return
+
+    var our_cells = board.get_cells_for_side(player)
+
+    # Check if within horizon of any of our cells
+    for our_cell in board.get_cells_for_side(player):
+        if get_distance(our_cell) <= HORIZON:
+            seen_by[player] = true
+            return
+
+# Calculate hex distance between this cell and another
+func get_distance(other_cell: Cell) -> int:
+    # Hex distance formula for offset coordinates
+    var dx = abs(x - other_cell.x)
+    var dy = abs(y - other_cell.y)
+    
+    # Adjust for hex grid offset
+    if (x % 2) != (other_cell.x % 2):
+        if y > other_cell.y:
+            dy += 1
+    
+    return max(dx, dy, dx + dy - max(dx, dy))
+
+# Check if visible to specific player
+func is_seen_by(player: int) -> bool:
+    if player < 0 or player >= MAX_PLAYERS:
+        return false
+
+    return seen_by[player]
 
 # Get string representation for debugging
 func _to_string() -> String:

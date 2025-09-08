@@ -19,9 +19,7 @@ var host_player_name: String = ""
 
 # Game state synchronization
 var game_manager: GameManager
-var pending_commands: Array = []
-var last_sync_time: float = 0.0
-var sync_interval: float = 0.1  # 10 FPS for network updates
+var player_horizons: Dictionary = {}
 
 func _ready():
     multiplayer.peer_connected.connect(_on_peer_connected)
@@ -210,8 +208,6 @@ func _generate_and_send_board(config: Dictionary):
     # Create temporary game manager to generate board
     var temp_gm = GameManager.new()
     temp_gm.start_new_game(config)
-    
-    # Serialize board
     var board_data = _serialize_board(temp_gm.board)
     
     # Send to all clients
@@ -244,34 +240,68 @@ func _receive_board_data(board_data: Dictionary):
     print("Client received board data with %d cells" % board_data.cells.size())
     game_started.emit(game_config)
 
-# GAME STATE SYNCHRONIZATION
 func set_game_manager(gm: GameManager):
     game_manager = gm
-    if game_manager:
-        game_manager.board_updated.connect(_on_board_updated)
 
-func _process(delta):
-    if not connected or not game_manager:
+func on_player_moved(player: int, owned_cells: Array[Cell]):
+    if not is_host:
         return
     
-    last_sync_time += delta
-    if last_sync_time >= sync_interval:
-        last_sync_time = 0.0
-        
-        if is_host:
-            _send_board_state()
-        
-        _process_pending_commands()
-
-# HOST: Send compressed board state to clients
-func _send_board_state():
-    if not is_host or not game_manager or not game_manager.board:
-        return
+    var new_horizon = calculate_horizon_boundary(owned_cells)
+    var old_horizon = player_horizons.get(player, [])
     
-    var changed_cells = []
-    for cell in game_manager.board.cell_list:
-        if cell.outdated:  # Flag set when cell changes
-            changed_cells.append({
+    if horizon_changed(old_horizon, new_horizon):
+        player_horizons[player] = new_horizon
+        check_horizon_overlaps(player, new_horizon)
+
+func calculate_horizon_boundary(owned_cells: Array[Cell]) -> Array[Vector2i]:
+    var horizon_cells: Array[Vector2i] = []
+    
+    for owned_cell in owned_cells:
+        for cell in game_manager.board.cell_list:
+            if owned_cell.get_distance(cell) <= Cell.HORIZON:
+                var pos = Vector2i(cell.x, cell.y)
+                if not horizon_cells.has(pos):
+                    horizon_cells.append(pos)
+    
+    return horizon_cells
+
+func horizon_changed(old_horizon: Array, new_horizon: Array) -> bool:
+    if old_horizon.size() != new_horizon.size():
+        return true
+    
+    for pos in new_horizon:
+        if not old_horizon.has(pos):
+            return true
+    
+    return false
+
+func check_horizon_overlaps(moved_player: int, moved_horizon: Array[Vector2i]):
+    for other_player_info in players.values():
+        var other_player = other_player_info.side
+        if other_player == moved_player:
+            continue
+        
+        var other_horizon = player_horizons.get(other_player, [] as Array[Vector2i])
+        var overlap = get_horizon_intersection(moved_horizon, other_horizon)
+        
+        if overlap.size() > 0:
+            send_visibility_update(other_player_info.peer_id, moved_player, overlap)
+        
+func get_horizon_intersection(horizon1: Array[Vector2i], horizon2: Array[Vector2i]) -> Array[Vector2i]:
+    var intersection: Array[Vector2i] = []
+    for pos in horizon1:
+        if horizon2.has(pos):
+            intersection.append(pos)
+    return intersection
+
+func send_visibility_update(to_peer_id: int, about_player: int, visible_positions: Array[Vector2i]):
+    var update_data = []
+        
+    for pos in visible_positions:
+        var cell = game_manager.board.get_cell(pos.x, pos.y)
+        if cell and cell.side == about_player:
+            update_data.append({
                 "index": cell.index,
                 "side": cell.side,
                 "troops": cell.troop_values.duplicate(),
@@ -280,18 +310,16 @@ func _send_board_state():
                 "directions": cell.direction_vectors.duplicate(),
                 "age": cell.age
             })
-            cell.outdated = false
-    
-    if changed_cells.size() > 0:
-        rpc_all_clients("_receive_board_update", changed_cells)
 
-# CLIENT: Receive and apply board state
+    if update_data.size() > 0:
+        rpc_id(to_peer_id, "_receive_board_update", update_data)
+
 @rpc("any_peer", "call_local", "unreliable")
-func _receive_board_update(changed_cells: Array):
+func _receive_board_update(updates: Array):
     if is_host or not game_manager or not game_manager.board:
         return
     
-    for cell_data in changed_cells:
+    for cell_data in updates:
         var cell = game_manager.board.get_cell_by_index(cell_data.index)
         if cell:
             cell.side = cell_data.side
@@ -301,7 +329,7 @@ func _receive_board_update(changed_cells: Array):
             cell.direction_vectors = cell_data.directions
             cell.age = cell_data.age
     
-    if changed_cells.size() > 0:
+    if updates.size() > 0:
         game_manager.board.queue_redraw()
 
 # PLAYER INPUT SYNCHRONIZATION
@@ -339,39 +367,23 @@ func send_cell_click(cell: Cell, direction_mask: int):
 func _receive_cell_command(command_data: Dictionary):
     if not is_host:
         return
-    
-    pending_commands.append(command_data)
+    _process_cell_command(command_data)
 
 @rpc("any_peer", "call_local", "reliable") 
 func _receive_cell_click(click_data: Dictionary):
     if not is_host:
         return
-    
-    pending_commands.append(click_data)
-
-func _process_pending_commands():
-    if not is_host or not game_manager:
-        return
-    
-    for command in pending_commands:
-        if command.has("command"):
-            _process_cell_command(command)
-        else:
-            _process_cell_click(command)
-    
-    pending_commands.clear()
+    _process_cell_click(click_data)
 
 func _process_cell_command(command_data: Dictionary):
     var cell = game_manager.board.get_cell_by_index(command_data.cell_index)
     if cell:
         game_manager.on_cell_command(cell, command_data.command)
-        cell.outdated = true
 
 func _process_cell_click(click_data: Dictionary):
     var cell = game_manager.board.get_cell_by_index(click_data.cell_index)
     if cell:
         game_manager.on_cell_click(cell, click_data.direction_mask)
-        cell.outdated = true
 
 # UTILITY FUNCTIONS
 func _find_next_available_side() -> int:
@@ -438,12 +450,6 @@ func _on_server_disconnected():
     players.clear()
     connection_failed.emit("Server disconnected")
 
-func _on_board_updated():
-    # Called when game board updates - mark relevant cells as outdated
-    # This is handled by individual cell changes in the game manager
-    pass
-
-# RPC HELPERS
 func rpc_all_clients(method: String, arg1 = null, arg2 = null, arg3 = null):
     if arg3 != null:
         rpc(method, arg1, arg2, arg3)

@@ -22,14 +22,16 @@ const FLAT_LAND = 0
 const FOREST = 1
 const LOW_HILLS = 2
 const HIGH_HILLS = 3
+const FOG = "FOG"
 
-const terrain_colors = {
+const COLOURS = {
     DEEP_SEA: Color.CORNFLOWER_BLUE,
     SHALLOW_SEA: Color.LIGHT_BLUE,
     FLAT_LAND: Color(0.8, 0.8, 0.4),
     FOREST: Color.DARK_SEA_GREEN,
     LOW_HILLS: Color.SEA_GREEN,
-    HIGH_HILLS: Color.LIGHT_GRAY
+    HIGH_HILLS: Color.LIGHT_GRAY,
+    FOG: Color(0.1, 0.1, 0.1),
 }
 
 # Board configuration
@@ -269,7 +271,12 @@ func _draw():
         draw_cell(cell)
 
 func draw_cell(cell: Cell):
+    var my_player = game_manager.current_player
     var hex_points = get_hex_points(cell)
+    
+    if not cell.is_seen_by(my_player):
+        draw_fog(hex_points)
+        return
     
     # Terrain
     var terrain_color = get_terrain_color(cell.level)
@@ -334,7 +341,7 @@ func draw_owned_cell(cell: Cell, center: Vector2):
         
         draw_circle(center, radius, player_color)
         
-        if show_troop_numbers and troop_count > 1:
+        if show_troop_numbers and cell.side == game_manager.current_player:
             var font = ThemeDB.fallback_font
             var text = str(troop_count)
             var text_size = font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, 12)
@@ -375,14 +382,30 @@ func draw_town_indicator(cell: Cell):
     draw_rect(indicator_rect, Color.BLACK, false, 1)
 
 func draw_direction_vectors(cell: Cell):
-    var center = get_hex_center(cell)
-    
+    # Only show direction vectors for our own troops
+    if cell.side != game_manager.current_player:
+        return
+
+    var center = get_hex_center(cell)    
     for i in cell.direction_vectors.size():
         if cell.direction_vectors[i]:
             var dir_vec = get_render_direction(i)
             var end_pos = center + dir_vec * (cell_height * 0.3)
             
             draw_line(center, end_pos, Color.WHITE, 2.0)
+
+# Fog Of War
+func draw_fog(hex_points: PackedVector2Array):
+    draw_colored_polygon(hex_points, COLOURS[FOG])
+    
+    if border_width > 0:
+        var border_points = hex_points.duplicate()
+        border_points.append(hex_points[0])
+        draw_polyline(border_points, Color.BLACK, border_width)
+
+func update_fog(player: int):
+    for cell in cell_list:
+        cell.player_visibility(player, self)
 
 func get_render_direction(direction_index: int) -> Vector2:
     # Convert logical grid directions to visual directions
@@ -395,9 +418,9 @@ func get_render_direction(direction_index: int) -> Vector2:
         5: return Vector2(0.866, -0.5)  # RIGHT_UP
         _: return Vector2.ZERO
 
-func get_terrain_color(level: int) -> Color:
-    if terrain_colors.has(level):
-        return terrain_colors[level]
+func get_terrain_color(level) -> Color:
+    if COLOURS.has(level):
+        return COLOURS[level]
     elif level > 3:
         return Color(0.4, 0.5, 0.1)
     else:
@@ -449,7 +472,7 @@ func handle_cell_click(cell: Cell, event: InputEventMouseButton):
             best_direction = i
     
     var direction_mask = 1 << best_direction
-    game_manager.network_manager.send_cell_click(cell, direction_mask)
+    game_manager.on_cell_click(cell, direction_mask)
     queue_redraw()
 
 # GAME STATE QUERIES

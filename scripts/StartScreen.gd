@@ -187,7 +187,7 @@ func show_lobby():
         cancel_button.pressed.connect(_on_cancel_host if is_host else _on_leave_lobby)
         right_panel.add_child(cancel_button)
 
-    var has_players = update_player_list()
+    update_player_list()
 
 func show_setup_screen():
     clear_main_content(left_panel)
