@@ -12,7 +12,7 @@ const MAX_PLAYERS = 11
 
 var multiplayer_peer: MultiplayerPeer
 var is_host: bool = false
-var is_connected: bool = false
+var connected: bool = false
 var players: Dictionary = {}  # peer_id -> player_info
 var game_config: Dictionary = {}
 var host_player_name: String = ""
@@ -42,7 +42,7 @@ func host_game(player_name: String, port: int = DEFAULT_PORT) -> bool:
     multiplayer.multiplayer_peer = peer
     multiplayer_peer = peer
     is_host = true
-    is_connected = true
+    connected = true
     host_player_name = player_name
     
     # Add host as first player
@@ -68,7 +68,7 @@ func stop_hosting():
         multiplayer_peer.close()
         multiplayer.multiplayer_peer = null
         is_host = false
-        is_connected = false
+        connected = false
         players.clear()
         print("Stopped hosting")
 
@@ -96,7 +96,7 @@ func disconnect_from_game():
             rpc_id(1, "_notify_leaving")
         
         multiplayer.multiplayer_peer = null
-        is_connected = false
+        connected = false
         players.clear()
         print("Disconnected from game")
 
@@ -134,7 +134,7 @@ func _request_join(player_name: String):
 
 @rpc("any_peer", "call_local", "reliable")
 func _join_accepted(my_info: Dictionary, player_list: Array):
-    is_connected = true
+    connected = true
     players.clear()
     
     # Rebuild players dictionary
@@ -179,7 +179,7 @@ func _player_left(player_info: Dictionary):
 @rpc("any_peer", "call_local", "reliable")
 func _on_host_disconnected():
     if not is_host:
-        is_connected = false
+        connected = false
         players.clear()
         connection_failed.emit("Host disconnected")
 
@@ -198,7 +198,51 @@ func start_network_game(config: Dictionary):
 @rpc("any_peer", "call_local", "reliable")
 func _game_starting(config: Dictionary):
     game_config = config
+    
+    if is_host:
+        # Host generates board and sends to clients, then starts
+        _generate_and_send_board(config)
+    else:
+        # Client just emits - will start when board data arrives
+        game_started.emit(config)
+
+func _generate_and_send_board(config: Dictionary):
+    # Create temporary game manager to generate board
+    var temp_gm = GameManager.new()
+    temp_gm.start_new_game(config)
+    
+    # Serialize board
+    var board_data = _serialize_board(temp_gm.board)
+    
+    # Send to all clients
+    rpc_all_clients("_receive_board_data", board_data)
+    
+    temp_gm.queue_free()
     game_started.emit(config)
+
+func _serialize_board(board: Board) -> Dictionary:
+    var cell_data = []
+    for cell in board.cell_list:
+        cell_data.append({
+            "x": cell.x, "y": cell.y, "index": cell.index,
+            "side": cell.side, "troops": cell.troop_values.duplicate(),
+            "level": cell.level, "growth": cell.growth
+        })
+    
+    return {
+        "width": board.width,
+        "height": board.height,
+        "cells": cell_data
+    }
+
+@rpc("any_peer", "call_local", "reliable")
+func _receive_board_data(board_data: Dictionary):
+    if game_config.has("board_data"):
+        return  # Already received
+
+    game_config["board_data"] = board_data
+    print("Client received board data with %d cells" % board_data.cells.size())
+    game_started.emit(game_config)
 
 # GAME STATE SYNCHRONIZATION
 func set_game_manager(gm: GameManager):
@@ -207,7 +251,7 @@ func set_game_manager(gm: GameManager):
         game_manager.board_updated.connect(_on_board_updated)
 
 func _process(delta):
-    if not is_connected or not game_manager:
+    if not connected or not game_manager:
         return
     
     last_sync_time += delta
@@ -262,7 +306,7 @@ func _receive_board_update(changed_cells: Array):
 
 # PLAYER INPUT SYNCHRONIZATION
 func send_cell_command(cell: Cell, command: int):
-    if not is_connected or not game_manager:
+    if not connected or not game_manager:
         return
     
     var command_data = {
@@ -277,7 +321,7 @@ func send_cell_command(cell: Cell, command: int):
         rpc_id(1, "_receive_cell_command", command_data)
 
 func send_cell_click(cell: Cell, direction_mask: int):
-    if not is_connected or not game_manager:
+    if not connected or not game_manager:
         return
     
     var click_data = {
@@ -358,7 +402,7 @@ func get_player_count() -> int:
     return players.size()
 
 func is_game_ready() -> bool:
-    return is_connected and players.size() >= 2
+    return connected and players.size() >= 2
 
 # CONNECTION EVENT HANDLERS
 func _on_peer_connected(peer_id: int):
@@ -372,8 +416,11 @@ func _on_peer_disconnected(peer_id: int):
         players.erase(peer_id)
         
         if is_host:
-            # Notify remaining players
             rpc_all_clients("_player_left", player_info)
+            # Check for victory condition
+            if game_manager and players.size() == 1:
+                var winner = players.values()[0].side
+                game_manager.game_over.emit(winner)
         
         player_left.emit(player_info)
 
@@ -383,11 +430,11 @@ func _on_connection_failed():
 
 func _on_connected_to_server():
     print("Connected to server")
-    is_connected = true
+    connected = true
 
 func _on_server_disconnected():
     print("Server disconnected")
-    is_connected = false
+    connected = false
     players.clear()
     connection_failed.emit("Server disconnected")
 

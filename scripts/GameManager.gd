@@ -23,6 +23,7 @@ const COST_BUILD = 25
 @export var player_count: int = 2
 @export var game_speed: float = 1.0
 @export var is_paused: bool = false
+@export var is_simulation_host: bool = true
 
 # Game configuration (from original xbattle constants)
 @export var fight_intensity: int = Cell.DEFAULT_FIGHT
@@ -50,22 +51,33 @@ func start_new_game(config: Dictionary):
     player_count = config.player_count
     print("Starting new game: %dx%d board, %d players" % [width, height, player_count])
     
-    current_player = 0
+    # Get MY player side from network manager
+    if network_manager:
+        var my_info = network_manager.get_my_player_info()
+        current_player = my_info.get("side", 0)
+    else:
+        current_player = 0
+    
     is_paused = false
     
-    # Create the board
-    board = Board.new(width, height)
+    if config.has("board_data"):
+        # Client: receive board from host
+        board = _deserialize_board(config.board_data)
+        is_simulation_host = false
+        print("Client received board from host, playing as side %d" % current_player)
+    else:
+        # Host: generate new board
+        board = Board.new(width, height)
+        board.generate_terrain(config.hill_density, config.sea_density, config.forest_density)
+        board.place_random_towns(config.town_density)
+        board.place_player_bases(player_count, 1)
+        is_simulation_host = true
+        print("Host generated board, playing as side %d" % current_player)
     
-    # Generate terrain and features
-    board.generate_terrain(config.hill_density, config.sea_density, config.forest_density)
-    board.place_random_towns(config.town_density)
-    board.place_player_bases(player_count, 1)  # 1 base per player
-    
-    print("Game started with %d players" % player_count)
     board_updated.emit()
 
 func _process(delta):
-    if not board or is_paused:
+    if not board or is_paused or not is_simulation_host:
         return
     
     update_timer += delta * game_speed
@@ -197,10 +209,10 @@ func update_cell_movement(cell: Cell):
     
     for dir in directions:
         if cell.direction_vectors[dir] and cell.connections[dir] != null:
-            move_troops(cell, cell.connections[dir], dir)
+            move_troops(cell, cell.connections[dir])
 
 # Move troops between cells (core movement logic)
-func move_troops(source: Cell, dest: Cell, direction: int):
+func move_troops(source: Cell, dest: Cell):
     if dest.level < Board.FLAT_LAND:
         return # Can't move into sea
     
@@ -332,11 +344,11 @@ func execute_scuttle(cell: Cell):
 
 func execute_paratroops(cell: Cell):
     # TODO: Implement airborne assault
-    print("Paratroops not implemented yet")
+    print("Paratroops not implemented yet - cell [%d,%d]" % [cell.x, cell.y])
 
 func execute_artillery(cell: Cell):
     # TODO: Implement ranged attack
-    print("Artillery not implemented yet")
+    print("Artillery not implemented yet - cell [%d,%d]" % [cell.x, cell.y])
 
 # Game control functions
 func pause_game():
@@ -354,6 +366,13 @@ func set_game_speed(speed: float):
 func setup_network(nm: NetworkManager):
     network_manager = nm
     nm.set_game_manager(self)
+    nm.player_left.connect(_check_victory.bind())
+
+func _check_victory():
+    if network_manager.get_player_count() == 1:
+        var remaining_players = network_manager.players.values()
+        var winner = remaining_players[0].side
+        game_over.emit(winner)
 
 # Get game statistics
 func get_game_stats() -> Dictionary:
@@ -392,3 +411,17 @@ func play_success_sound():
    audio.stream = load("res://assets/dirt.mp3")
    audio.play()
    audio.finished.connect(func(): audio.queue_free())
+
+func _deserialize_board(data: Dictionary) -> Board:
+    print("Deserializing board with %d cells" % data.cells.size())
+    var board = Board.new(data.width, data.height)
+    
+    for cell_data in data.cells:
+        var cell = board.get_cell_by_index(cell_data.index)
+        cell.side = cell_data.side
+        cell.troop_values = cell_data.troops
+        cell.level = cell_data.level
+        cell.growth = cell_data.growth
+    
+    print("Deserialized board: first cell side=%d, level=%d" % [board.cell_list[0].side, board.cell_list[0].level])
+    return board

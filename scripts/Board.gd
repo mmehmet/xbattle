@@ -436,13 +436,12 @@ func handle_cell_click(cell: Cell, event: InputEventMouseButton):
         
     var cell_center = get_hex_center(cell)
     var direction_vec = (event.position - cell_center).normalized()
-    var hex = get_hex_directions(cell.x)
     
     # Find closest direction using RENDER vectors
     var best_direction = 0
     var best_dot = -2.0
     
-    for i in 6:
+    for i in Cell.MAX_DIRECTIONS:
         var render_dir = get_render_direction(i)
         var dot = direction_vec.dot(render_dir)
         if dot > best_dot:
@@ -450,7 +449,7 @@ func handle_cell_click(cell: Cell, event: InputEventMouseButton):
             best_direction = i
     
     var direction_mask = 1 << best_direction
-    game_manager.on_cell_click(cell, direction_mask)
+    game_manager.network_manager.send_cell_click(cell, direction_mask)
     queue_redraw()
 
 # GAME STATE QUERIES
@@ -512,7 +511,7 @@ func get_stats() -> Dictionary:
 func on_board_updated():
     queue_redraw()
 
-func on_cell_changed(cell: Cell):
+func on_cell_changed():
     queue_redraw()
 
 func _to_string() -> String:
