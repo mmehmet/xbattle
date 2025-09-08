@@ -133,23 +133,6 @@ func clear_directions():
     direction_vectors.fill(false)
     move = 0
 
-# Calculate if this cell should be visible to a player
-func player_visibility(player: int, board):
-    seen_by[player] = false
-    
-    # Always see cells we own
-    if side == player:
-        seen_by[player] = true
-        return
-
-    var our_cells = board.get_cells_for_side(player)
-
-    # Check if within horizon of any of our cells
-    for our_cell in board.get_cells_for_side(player):
-        if get_distance(our_cell) <= HORIZON:
-            seen_by[player] = true
-            return
-
 # Calculate hex distance between this cell and another
 func get_distance(other_cell: Cell) -> int:
     # Hex distance formula for offset coordinates

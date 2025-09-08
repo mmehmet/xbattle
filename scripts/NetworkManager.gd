@@ -19,7 +19,7 @@ var host_player_name: String = ""
 
 # Game state synchronization
 var game_manager: GameManager
-var player_horizons: Dictionary = {}
+var board_of_truth: Board
 
 func _ready():
     multiplayer.peer_connected.connect(_on_peer_connected)
@@ -69,6 +69,9 @@ func stop_hosting():
         connected = false
         players.clear()
         print("Stopped hosting")
+
+func set_board_of_truth(board: Board):
+    board_of_truth = board_of_truth
 
 # CLIENT FUNCTIONS  
 func join_game(player_name: String, address: String, port: int = DEFAULT_PORT) -> bool:
@@ -243,58 +246,33 @@ func _receive_board_data(board_data: Dictionary):
 func set_game_manager(gm: GameManager):
     game_manager = gm
 
-func on_player_moved(player, owned_cells):
+func player_moved(new_cell: Cell):
     if not is_host:
         return
     
-    print("player moved")
-    player_horizons[player] = calculate_horizon(player, owned_cells)
-    get_overlap(player)
-
-func calculate_horizon(player, owned_cells) -> Array[Vector2i]:
-    var horizon: Dictionary = {}
+    print("player moved to %d-%d" % [new_cell.x, new_cell.y])
     
-    # Single pass: add all boundary cells to set
-    for cell in owned_cells:
-        for dx in range(-Cell.HORIZON, Cell.HORIZON + 1):
-            for dy in range(-Cell.HORIZON, Cell.HORIZON + 1):
-                var target_x = cell.x + dx
-                var target_y = cell.y + dy
-                if game_manager.board.is_valid_position(Vector2i(target_x, target_y)):
-                    horizon[Vector2i(target_x, target_y)] = true
+    # Update fog for all players on authoritative board
+    var player_vals = players.values()
+    for p in player_vals:
+        board_of_truth.update_fog(p.side)
     
-    return horizon.keys()
+    # Check visibility and send updates
+    for player in player_vals:
+        if player.side != new_cell.side and new_cell.is_seen_by(player.side):
+            send_cell_update(player.peer_id, new_cell)
 
-func get_overlap(moved_player: int):
-    var horizon1 = player_horizons[moved_player]
-    for player_info in players.values().filter(func(p): return p.side != moved_player):
-        var other_player = player_info.side
-        var horizon2 = player_horizons.get(other_player, [] as Array[Vector2i])
-        var overlap: Array[Vector2i] = []
-        for pos in horizon1:
-            if horizon2.has(pos):
-                overlap.append(pos)
-        if overlap.size():
-            send_visibility_update(player_info.peer_id, moved_player, overlap)
-
-func send_visibility_update(to_peer_id: int, about_player: int, visible_positions: Array[Vector2i]):
-    var update_data = []
-        
-    for pos in visible_positions:
-        var cell = game_manager.board.get_cell(pos.x, pos.y)
-        if cell and cell.side == about_player:
-            update_data.append({
-                "index": cell.index,
-                "side": cell.side,
-                "troops": cell.troop_values.duplicate(),
-                "level": cell.level,
-                "growth": cell.growth,
-                "directions": cell.direction_vectors.duplicate(),
-                "age": cell.age
-            })
-
-    if update_data.size() > 0:
-        rpc_id(to_peer_id, "_receive_board_update", update_data)
+func send_cell_update(to_peer_id: int, cell: Cell):
+    var update_data = {
+        "index": cell.index,
+        "side": cell.side,
+        "troops": cell.troop_values.duplicate(),
+        "level": cell.level,
+        "growth": cell.growth,
+        "directions": cell.direction_vectors.duplicate(),
+        "age": cell.age
+    }
+    rpc_id(to_peer_id, "_receive_cell_update", update_data)
 
 @rpc("any_peer", "call_local", "unreliable")
 func _receive_board_update(updates: Array):
@@ -312,6 +290,21 @@ func _receive_board_update(updates: Array):
             cell.age = cell_data.age
     
     if updates.size() > 0:
+        game_manager.board.queue_redraw()
+
+@rpc("any_peer", "call_local", "unreliable")
+func _receive_cell_update(cell_data: Dictionary):
+    if is_host or not game_manager or not game_manager.board:
+        return
+    
+    var cell = game_manager.board.get_cell_by_index(cell_data.index)
+    if cell:
+        cell.side = cell_data.side
+        cell.troop_values = cell_data.troops
+        cell.level = cell_data.level
+        cell.growth = cell_data.growth
+        cell.direction_vectors = cell_data.directions
+        cell.age = cell_data.age
         game_manager.board.queue_redraw()
 
 # PLAYER INPUT SYNCHRONIZATION

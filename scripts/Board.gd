@@ -403,9 +403,24 @@ func draw_fog(hex_points: PackedVector2Array):
         border_points.append(hex_points[0])
         draw_polyline(border_points, Color.BLACK, border_width)
 
-func update_fog(player: int):
+func get_fog(side: int) -> Array[Cell]:
+    var visible_cells: Array[Cell] = []
     for cell in cell_list:
-        cell.player_visibility(player, self)
+        if cell.is_seen_by(side):
+            visible_cells.append(cell)
+    return visible_cells
+
+func update_fog(player: int):
+    var owned_cells = get_cells_for_side(player)
+    for cell in cell_list:
+        cell.seen_by[player] = false
+        if cell.side == player:
+            cell.seen_by[player] = true
+        else:
+            for owned_cell in owned_cells:
+                if cell.get_distance(owned_cell) <= Cell.HORIZON:
+                    cell.seen_by[player] = true
+                    break
 
 func get_render_direction(direction_index: int) -> Vector2:
     # Convert logical grid directions to visual directions
