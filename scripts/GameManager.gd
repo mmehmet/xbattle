@@ -69,6 +69,8 @@ func start_new_game(config: Dictionary):
         board.place_random_towns(config.town_density)
         board.place_player_bases(player_count, 1)
         print("Host generated board, playing as side %d" % current_player)
+        if network_manager and network_manager.is_host:
+            network_manager.set_board_of_truth(board)
     
     board_updated.emit()
     board.update_fog(current_player)
@@ -254,7 +256,7 @@ func move_troops(source: Cell, dest: Cell):
         dest.set_troops(source.side, move_amount)
         dest.age = 0
         if network_manager:
-            network_manager.on_player_moved(dest.side, board.get_cells_for_side(dest.side))  # horizon has changed
+            network_manager.player_moved(dest)  # horizon has changed
     elif dest.side == source.side:
         # Moving into friendly cell
         dest.add_troops(move_amount)
@@ -406,6 +408,13 @@ func toggle_growth(enabled: bool):
     print("Growth %s" % ("enabled" if enabled else "disabled"))
 
 # Misc
+func array_intersect(a1: Array, a2: Array) -> Array:
+    var result = []
+    for item in a1:
+        if a2.has(item):
+            result.append(item)
+    return result
+
 func play_success_sound():
    var audio = AudioStreamPlayer.new()
    add_child(audio)
