@@ -23,6 +23,7 @@ const COST_BUILD = 25
 @export var player_count: int = 2
 @export var game_speed: float = 1.0
 @export var is_paused: bool = false
+@export var board_of_truth: Board
 
 # Game configuration (from original xbattle constants)
 @export var fight_intensity: int = Cell.DEFAULT_FIGHT
@@ -48,6 +49,21 @@ func start_new_game(config: Dictionary):
     var height = config.map_size.y
     player_count = config.player_count
     print("Starting new game: %dx%d board, %d players" % [width, height, player_count])
+    print("DEBUG: start_new_game called, has board_data=%s, is_host=%s" % [config.has("board_data"), network_manager.is_host if network_manager else false])
+    
+    if network_manager and network_manager.is_host and not config.has("board_data"):
+        # Host generates and sends board data to clients
+        board = Board.new(width, height)
+        board.generate_terrain(config.hill_density, config.sea_density, config.forest_density)
+        board.place_random_towns(config.town_density)
+        board.place_player_bases(player_count, 1)
+        print("Host generated board, playing as side %d" % current_player)
+        board_of_truth = board
+        print("DEBUG: board_of_truth set: %s" % [board_of_truth != null])
+        
+        var board_data = network_manager.serialize_board(board)
+        network_manager.rpc_all_clients("_receive_board_data", board_data)
+        config["board_data"] = board_data  # So we take client path below
     
     # Get MY player side from network manager
     if network_manager:
@@ -56,24 +72,18 @@ func start_new_game(config: Dictionary):
     else:
         current_player = 0
     
-    is_paused = false
+    if not config.has("board_data"):
+        return
     
-    if config.has("board_data"):
-        # Client: receive board from host
-        board = _deserialize_board(config.board_data)
-        print("Client received board from host, playing as side %d" % current_player)
-    else:
-        # Host: generate new board
-        board = Board.new(width, height)
-        board.generate_terrain(config.hill_density, config.sea_density, config.forest_density)
-        board.place_random_towns(config.town_density)
-        board.place_player_bases(player_count, 1)
-        print("Host generated board, playing as side %d" % current_player)
-        if network_manager and network_manager.is_host:
-            network_manager.set_board_of_truth(board)
+    is_paused = false
+
+    # Client: receive board from host
+    board = _deserialize_board(config.board_data)
+    print("Client received board from host, playing as side %d" % current_player)
     
     board_updated.emit()
-    board.update_fog(current_player)
+    if board:
+        board.update_fog(current_player)
 
 func _process(delta):
     if not board or is_paused:
@@ -220,7 +230,6 @@ func move_troops(source: Cell, dest: Cell):
     
     var source_troops = source.get_troop_count()
     var movable_troops = source_troops - source.lowbound
-    
     if movable_troops <= 0:
         return
     
@@ -243,7 +252,6 @@ func move_troops(source: Cell, dest: Cell):
         dest_friendly_troops = dest.get_troop_count()
     
     move_amount = min(move_amount, dest_capacity - dest_friendly_troops)
-    
     if move_amount <= 0:
         return
     
@@ -255,8 +263,9 @@ func move_troops(source: Cell, dest: Cell):
         dest.side = source.side
         dest.set_troops(source.side, move_amount)
         dest.age = 0
+        # horizon has changed
         if network_manager:
-            network_manager.player_moved(dest)  # horizon has changed
+            network_manager.rpc_all_clients("_fog_moved", dest.index, dest.side)
     elif dest.side == source.side:
         # Moving into friendly cell
         dest.add_troops(move_amount)
@@ -368,6 +377,7 @@ func set_game_speed(speed: float):
 
 func setup_network(nm: NetworkManager):
     network_manager = nm
+    print("DEBUG: GameManager.setup_network, nm.is_host=%s" % nm.is_host)
     nm.set_game_manager(self)
     nm.player_left.connect(_check_victory.bind())
 
@@ -424,14 +434,13 @@ func play_success_sound():
 
 func _deserialize_board(data: Dictionary) -> Board:
     print("Deserializing board with %d cells" % data.cells.size())
-    var board = Board.new(data.width, data.height)
+    var temp = Board.new(data.width, data.height)
     
     for cell_data in data.cells:
-        var cell = board.get_cell_by_index(cell_data.index)
+        var cell = temp.get_cell_by_index(cell_data.index)
         cell.side = cell_data.side
         cell.troop_values = cell_data.troops
         cell.level = cell_data.level
         cell.growth = cell_data.growth
     
-    print("Deserialized board: first cell side=%d, level=%d" % [board.cell_list[0].side, board.cell_list[0].level])
-    return board
+    return temp

@@ -259,9 +259,9 @@ func calculate_scaling(x: int, y: int):
     var width_scale = x / board_width
     
     # Use smaller scale
-    var scale = min(height_scale, width_scale / (2 / sqrt(3)))
+    var sm = min(height_scale, width_scale / (2 / sqrt(3)))
     
-    cell_height = int(scale)
+    cell_height = int(sm)
     cell_width = 2 * cell_height / sqrt(3)
 
 func _draw():

@@ -19,7 +19,6 @@ var host_player_name: String = ""
 
 # Game state synchronization
 var game_manager: GameManager
-var board_of_truth: Board
 
 func _ready():
     multiplayer.peer_connected.connect(_on_peer_connected)
@@ -69,9 +68,6 @@ func stop_hosting():
         connected = false
         players.clear()
         print("Stopped hosting")
-
-func set_board_of_truth(board: Board):
-    board_of_truth = board_of_truth
 
 # CLIENT FUNCTIONS  
 func join_game(player_name: String, address: String, port: int = DEFAULT_PORT) -> bool:
@@ -186,7 +182,7 @@ func _on_host_disconnected():
 
 # GAME START/STOP
 func start_network_game(config: Dictionary):
-    if not is_host:
+    if not is_host or game_config.size() > 0:
         return
     
     game_config = config
@@ -194,7 +190,6 @@ func start_network_game(config: Dictionary):
     
     # Start game for all players
     rpc_all_clients("_game_starting", game_config)
-    _game_starting(game_config)
 
 @rpc("any_peer", "call_local", "reliable")
 func _game_starting(config: Dictionary):
@@ -203,23 +198,11 @@ func _game_starting(config: Dictionary):
     if is_host:
         # Host generates board and sends to clients, then starts
         _generate_and_send_board(config)
-    else:
-        # Client just emits - will start when board data arrives
-        game_started.emit(config)
 
 func _generate_and_send_board(config: Dictionary):
-    # Create temporary game manager to generate board
-    var temp_gm = GameManager.new()
-    temp_gm.start_new_game(config)
-    var board_data = _serialize_board(temp_gm.board)
-    
-    # Send to all clients
-    rpc_all_clients("_receive_board_data", board_data)
-    
-    temp_gm.queue_free()
     game_started.emit(config)
 
-func _serialize_board(board: Board) -> Dictionary:
+func serialize_board(board: Board) -> Dictionary:
     var cell_data = []
     for cell in board.cell_list:
         cell_data.append({
@@ -236,6 +219,9 @@ func _serialize_board(board: Board) -> Dictionary:
 
 @rpc("any_peer", "call_local", "reliable")
 func _receive_board_data(board_data: Dictionary):
+    if is_host:
+        return  # Host doesn't need its own board data
+
     if game_config.has("board_data"):
         return  # Already received
 
@@ -244,23 +230,27 @@ func _receive_board_data(board_data: Dictionary):
     game_started.emit(game_config)
 
 func set_game_manager(gm: GameManager):
+    if game_manager != null:
+        return
+
     game_manager = gm
 
-func player_moved(new_cell: Cell):
-    if not is_host:
-        return
-    
-    print("player moved to %d-%d" % [new_cell.x, new_cell.y])
-    
-    # Update fog for all players on authoritative board
-    var player_vals = players.values()
-    for p in player_vals:
-        board_of_truth.update_fog(p.side)
-    
-    # Check visibility and send updates
-    for player in player_vals:
-        if player.side != new_cell.side and new_cell.is_seen_by(player.side):
-            send_cell_update(player.peer_id, new_cell)
+@rpc("any_peer", "call_local", "reliable")
+func _fog_moved(index, side):
+    if is_host and game_manager:
+        var cell = game_manager.board_of_truth.get_cell_by_index(index)
+        print("player %d moved to %d-%d" % [side, cell.x, cell.y])
+
+        # Update fog for all players on authoritative board
+        var player_vals = players.values()
+        for p in player_vals:
+            game_manager.board_of_truth.update_fog(p.side)
+        
+        # Check visibility and send updates
+        for player in player_vals.filter(func(p): return p.side != side):
+            if cell.is_seen_by(player.side):
+                print("msg to player %d about player %d" % [player.side, side])
+                send_cell_update(player.peer_id, cell)
 
 func send_cell_update(to_peer_id: int, cell: Cell):
     var update_data = {
