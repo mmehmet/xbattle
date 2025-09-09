@@ -263,9 +263,7 @@ func move_troops(source: Cell, dest: Cell):
         dest.side = source.side
         dest.set_troops(source.side, move_amount)
         dest.age = 0
-        # horizon has changed
-        if network_manager:
-            network_manager.rpc_all_clients("_fog_moved", dest.index, dest.side)
+        on_cell_captured(dest)
     elif dest.side == source.side:
         # Moving into friendly cell
         dest.add_troops(move_amount)
@@ -301,6 +299,17 @@ func on_cell_command(cell: Cell, command: int):
         CMD_SCUTTLE: execute_scuttle(cell)
         CMD_PARATROOPS: execute_paratroops(cell)
         CMD_ARTILLERY: execute_artillery(cell)
+
+func on_cell_captured(cell: Cell):
+    if network_manager:
+        network_manager.rpc_all_clients("_fog_moved", {
+            "index": cell.index,
+            "side": cell.side, 
+            "troops": cell.troop_values,
+            "directions": cell.direction_vectors,
+            "level": cell.level,
+            "growth": cell.growth
+        })
 
 func execute_attack(cell: Cell):
     # Basic attack - boost troop movement temporarily

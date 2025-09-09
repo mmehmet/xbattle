@@ -236,10 +236,16 @@ func set_game_manager(gm: GameManager):
     game_manager = gm
 
 @rpc("any_peer", "call_local", "reliable")
-func _fog_moved(index, side):
+func _fog_moved(cell_data: Dictionary):
     if is_host and game_manager:
-        var cell = game_manager.board_of_truth.get_cell_by_index(index)
-        print("player %d moved to %d-%d" % [side, cell.x, cell.y])
+        # Update board_of_truth with new cell data
+        var cell = game_manager.board_of_truth.get_cell_by_index(cell_data.index)
+        cell.side = cell_data.side
+        cell.troop_values = cell_data.troops
+        cell.direction_vectors = cell_data.directions
+        cell.level = cell_data.level
+        cell.growth = cell_data.growth
+        print("player %d moved to %d-%d" % [cell.side, cell.x, cell.y])
 
         # Update fog for all players on authoritative board
         var player_vals = players.values()
@@ -247,9 +253,9 @@ func _fog_moved(index, side):
             game_manager.board_of_truth.update_fog(p.side)
         
         # Check visibility and send updates
-        for player in player_vals.filter(func(p): return p.side != side):
+        for player in player_vals.filter(func(p): return p.side != cell.side):
             if cell.is_seen_by(player.side):
-                print("msg to player %d about player %d" % [player.side, side])
+                print("msg to player %d about player %d" % [player.side, cell.side])
                 send_cell_update(player.peer_id, cell)
 
 func send_cell_update(to_peer_id: int, cell: Cell):
