@@ -19,3 +19,7 @@ mono_crash.*.json
 
 # bullshit MacOS droppings
 .DS_Store
+
+# builds
+/build/
+
