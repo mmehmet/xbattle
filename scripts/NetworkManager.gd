@@ -89,7 +89,9 @@ func join_game(player_name: String, address: String, port: int = DEFAULT_PORT) -
 
 func disconnect_from_game():
     if multiplayer_peer:
-        if not is_host:
+        if is_host:
+            stop_hosting()
+        else:
             rpc_id(1, "_notify_leaving")
         
         multiplayer.multiplayer_peer = null
@@ -236,7 +238,7 @@ func set_game_manager(gm: GameManager):
     game_manager = gm
 
 @rpc("any_peer", "call_local", "reliable")
-func _fog_moved(cell_data: Dictionary):
+func _track_cell(cell_data: Dictionary):
     if is_host and game_manager:
         # Update board_of_truth with new cell data
         var cell = game_manager.board_of_truth.get_cell_by_index(cell_data.index)
@@ -290,9 +292,10 @@ func _receive_board_update(updates: Array):
 
 @rpc("any_peer", "call_local", "unreliable")
 func _receive_cell_update(cell_data: Dictionary):
-    if is_host or not game_manager or not game_manager.board:
+    if not game_manager or not game_manager.board:
         return
     
+    print("received update from player %d" % cell_data.side)
     var cell = game_manager.board.get_cell_by_index(cell_data.index)
     if cell:
         cell.side = cell_data.side

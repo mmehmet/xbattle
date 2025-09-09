@@ -85,6 +85,14 @@ func start_new_game(config: Dictionary):
     if board:
         board.update_fog(current_player)
 
+func concede_defeat():
+    if player_count == 2:
+        var opponent = 1 - current_player
+        game_over.emit(opponent)
+    else:
+        game_over.emit(-1)  # Multi-player concede
+    print("Player %d conceded" % current_player)
+
 func _process(delta):
     if not board or is_paused:
         return
@@ -269,7 +277,9 @@ func move_troops(source: Cell, dest: Cell):
         dest.add_troops(move_amount)
     else:
         # Moving into enemy cell - start combat
-        dest.troop_values[source.side] += move_amount
+        var current = dest.troop_values[source.side]
+        var max_capacity = dest.get_max_capacity()
+        dest.troop_values[source.side] = min(current + move_amount, max_capacity)
         dest.side = Cell.SIDE_FIGHT
     
     cell_changed.emit(source)
@@ -302,7 +312,7 @@ func on_cell_command(cell: Cell, command: int):
 
 func on_cell_captured(cell: Cell):
     if network_manager:
-        network_manager.rpc_all_clients("_fog_moved", {
+        network_manager.rpc_all_clients("_track_cell", {
             "index": cell.index,
             "side": cell.side, 
             "troops": cell.troop_values,

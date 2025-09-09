@@ -63,3 +63,5 @@ func _input(event):
     if event is InputEventKey and event.pressed:
         if event.keycode == KEY_ESCAPE:
             game_ended.emit()
+        elif event.keycode == KEY_Q:
+            game_manager.concede_defeat()

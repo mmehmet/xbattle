@@ -338,9 +338,10 @@ func _on_connect_to_host():
     if player_name.is_empty():
         player_name = "Anonymous"
 
+    #network_manager.join_game(player_name, address)
+    #players = [{"name": player_name, "is_host": false, "side": -1}]
+    #show_lobby()
     network_manager.join_game(player_name, address)
-    players = [{"name": player_name, "is_host": false, "side": -1}]
-    show_lobby()
 
 func _on_leave_lobby():
     network_manager.disconnect_from_game()
@@ -357,6 +358,7 @@ func _on_player_left(player_info: Dictionary):
 
 func _on_lobby_updated(player_list: Array):
     players = player_list
+    show_lobby()
     update_player_list()
 
 func _on_start_multiplayer_game():
