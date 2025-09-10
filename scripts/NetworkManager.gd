@@ -19,6 +19,7 @@ var host_player_name: String = ""
 
 # Game state synchronization
 var game_manager: GameManager
+var host_manager: HostManager
 
 func _ready():
     multiplayer.peer_connected.connect(_on_peer_connected)
@@ -51,6 +52,8 @@ func host_game(player_name: String, port: int = DEFAULT_PORT) -> bool:
         "peer_id": 1
     }
     players[1] = host_info
+    host_manager = HostManager.new()
+    add_child(host_manager)
     
     print("Server started on port %d" % port)
     player_joined.emit(host_info)
@@ -68,6 +71,30 @@ func stop_hosting():
         connected = false
         players.clear()
         print("Stopped hosting")
+
+func send_cell_delta(cell: Cell):
+    if is_host:
+        var cell_data = {
+            "index": cell.index,
+            "side": cell.side, 
+            "troops": cell.troop_values,
+            "level": cell.level,
+            "growth": cell.growth
+        }
+        rpc("_receive_cell_delta", cell_data)
+
+@rpc("any_peer", "reliable")
+func _receive_cell_delta(cell_data: Dictionary):
+    if is_host or not game_manager or not game_manager.board:
+        return
+    
+    var cell = game_manager.board.get_cell_by_index(cell_data.index)
+    if cell:
+        cell.side = cell_data.side
+        cell.troop_values = cell_data.troops
+        cell.level = cell_data.level
+        cell.growth = cell_data.growth
+        game_manager.board.queue_redraw()
 
 # CLIENT FUNCTIONS  
 func join_game(player_name: String, address: String, port: int = DEFAULT_PORT) -> bool:
@@ -205,6 +232,9 @@ func _generate_and_send_board(config: Dictionary):
     game_started.emit(config)
 
 func serialize_board(board: Board) -> Dictionary:
+    if host_manager:
+        host_manager.setup(self, board)
+
     var cell_data = []
     for cell in board.cell_list:
         cell_data.append({
@@ -445,6 +475,10 @@ func _on_server_disconnected():
     connected = false
     players.clear()
     connection_failed.emit("Server disconnected")
+
+@rpc("any_peer", "reliable")
+func _game_over(winner: int):
+    game_manager.game_over.emit(winner)
 
 func rpc_all_clients(method: String, arg1 = null, arg2 = null, arg3 = null):
     if arg3 != null:

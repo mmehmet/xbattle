@@ -23,17 +23,6 @@ const COST_BUILD = 25
 @export var player_count: int = 2
 @export var game_speed: float = 1.0
 @export var is_paused: bool = false
-@export var board_of_truth: Board
-
-# Game configuration (from original xbattle constants)
-@export var fight_intensity: int = Cell.DEFAULT_FIGHT
-@export var move_speed: int = Cell.DEFAULT_MOVE
-@export var max_troop_capacity: int = Cell.MAX_MAXVAL
-@export var enable_decay: bool = false
-@export var enable_growth: bool = true
-
-var update_timer: float = 0.0
-var update_interval: float = 0.5  # Updates per second
 
 # Signals for UI updates
 signal board_updated
@@ -56,10 +45,8 @@ func start_new_game(config: Dictionary):
         board = Board.new(width, height)
         board.generate_terrain(config.hill_density, config.sea_density, config.forest_density)
         board.place_random_towns(config.town_density)
-        board.place_player_bases(player_count, 1)
+        board.place_player_bases(player_count)
         print("Host generated board, playing as side %d" % current_player)
-        board_of_truth = board
-        print("DEBUG: board_of_truth set: %s" % [board_of_truth != null])
         
         var board_data = network_manager.serialize_board(board)
         network_manager.rpc_all_clients("_receive_board_data", board_data)
@@ -82,8 +69,6 @@ func start_new_game(config: Dictionary):
     print("Client received board from host, playing as side %d" % current_player)
     
     board_updated.emit()
-    if board:
-        board.update_fog(current_player, board.get_cells_for_side(current_player))
 
 func concede_defeat():
     if player_count == 2:
@@ -92,199 +77,6 @@ func concede_defeat():
     else:
         game_over.emit(-1)  # Multi-player concede
     print("Player %d conceded" % current_player)
-
-func _process(delta):
-    if not board or is_paused:
-        return
-    
-    update_timer += delta * game_speed
-    if update_timer >= update_interval:
-        update_timer = 0.0
-        update_board()
-
-# Main game update cycle (based on original update_board)
-func update_board():
-    if not board:
-        return
-    
-    # Update fog of war visibility
-    var army = board.get_cells_for_side(current_player)
-    var visible = board.update_fog(current_player, army)
-    
-    # Randomize update order (important for fairness)
-    army.shuffle()
-    
-    # Update each cell
-    for cell in army:
-        update_cell_growth(cell)
-        update_cell_decay(cell)
-        update_cell_combat(cell)
-        update_cell_movement(cell)
-    
-    # Check for game over
-    var winner = board.check_victory()
-    if winner >= 0:
-        game_over.emit(winner)
-        print("Game Over! Winner: Player %d" % winner)
-    elif winner == -2:
-        game_over.emit(-1)  # Draw
-        print("Game Over! Draw - all players eliminated")
-    
-    board_updated.emit()
-    if network_manager:
-        _serialise_visible(visible)
-
-# Update troop growth (towns and bases)
-func update_cell_growth(cell: Cell):
-    if not enable_growth or cell.growth <= 0 or cell.side < 0:
-        return
-    
-    var max_capacity = cell.get_max_capacity()
-    var current_troops = cell.get_troop_count()
-    
-    if current_troops < max_capacity:
-        # Probabilistic growth based on original formula
-        var growth_chance = cell.growth
-        
-        # Super towns can produce multiple troops per turn
-        if cell.growth > Cell.TOWN_MAX:
-            var guaranteed_troops = cell.growth / 100
-            cell.add_troops(guaranteed_troops)
-            growth_chance = cell.growth % 100
-        
-        # Random chance for additional troop
-        if randi() % 100 < growth_chance:
-            cell.add_troops(1)
-            cell_changed.emit(cell)
-
-# Update troop decay (optional feature)
-func update_cell_decay(cell: Cell):
-    if not enable_decay or cell.side < 0:
-        return
-    
-    # Simple decay implementation
-    var decay_chance = 2  # 2% chance per turn
-    if randi() % 100 < decay_chance:
-        var current_troops = cell.get_troop_count()
-        if current_troops > 0:
-            cell.set_troops(cell.side, current_troops - 1)
-            if cell.get_troop_count() == 0:
-                cell.side = Cell.SIDE_NONE
-            cell_changed.emit(cell)
-
-# Update combat resolution
-func update_cell_combat(cell: Cell):
-    if not cell.is_fighting():
-        return
-    
-    # Get all sides with troops in this cell
-    var sides_with_troops = {}
-    for side in Cell.MAX_PLAYERS:
-        if cell.troop_values[side] > 0:
-            sides_with_troops[side] = cell.troop_values[side]
-    
-    if sides_with_troops.size() <= 1:
-        # Combat resolved, assign winner
-        if sides_with_troops.size() == 1:
-            cell.side = sides_with_troops.keys()[0]
-        else:
-            cell.side = Cell.SIDE_NONE
-        cell_changed.emit(cell)
-        return
-    
-    # Calculate combat losses (based on original formula)
-    var total_enemies = {}
-    for side in sides_with_troops:
-        total_enemies[side] = 0
-        for other_side in sides_with_troops:
-            if other_side != side:
-                total_enemies[side] += sides_with_troops[other_side]
-    
-    # Apply losses
-    for side in sides_with_troops:
-        var my_troops = sides_with_troops[side]
-        var enemy_troops = total_enemies[side]
-        
-        if enemy_troops > 0:
-            var ratio = float(enemy_troops) / float(my_troops)
-            var loss_factor = (ratio * ratio - 1.0 + randf() * 0.02) * fight_intensity
-            
-            if loss_factor > 0:
-                var losses = int(loss_factor + 0.5)
-                losses = min(losses, my_troops)
-                cell.troop_values[side] = max(0, cell.troop_values[side] - losses)
-    
-    cell_changed.emit(cell)
-
-# Update troop movement
-func update_cell_movement(cell: Cell):
-    if cell.move == 0 or cell.side < 0 or cell.is_fighting():
-        return
-    
-    var current_troops = cell.get_troop_count()
-    if current_troops <= cell.lowbound:
-        return
-    
-    # Process each direction vector (in random order)
-    var directions = range(Cell.MAX_DIRECTIONS)
-    directions.shuffle()
-    
-    for dir in directions:
-        if cell.direction_vectors[dir] and cell.connections[dir] != null:
-            move_troops(cell, cell.connections[dir])
-
-# Move troops between cells (core movement logic)
-func move_troops(source: Cell, dest: Cell):
-    if dest.level < Board.FLAT_LAND:
-        return # Can't move into sea
-    
-    var source_troops = source.get_troop_count()
-    var movable_troops = source_troops - source.lowbound
-    if movable_troops <= 0:
-        return
-    
-    # Calculate movement amount (simplified from original complex formula)
-    var movement_modifier = dest.get_movement_modifier()
-    var rate = move_speed * 0.1 # 30% movement rate by default
-    var move_amount = int(float(movable_troops) * movement_modifier * rate)
-    
-    # Add randomness for small movements
-    if move_amount == 0 and randf() < 0.3:
-        move_amount = 1
-    
-    if move_amount <= 0:
-        return
-    
-    # Ensure we don't exceed destination capacity
-    var dest_capacity = dest.get_max_capacity()
-    var dest_friendly_troops = 0
-    if dest.side == source.side:
-        dest_friendly_troops = dest.get_troop_count()
-    
-    move_amount = min(move_amount, dest_capacity - dest_friendly_troops)
-    if move_amount <= 0:
-        return
-    
-    # Execute the movement
-    source.set_troops(source.side, source_troops - move_amount)
-    
-    if dest.side == Cell.SIDE_NONE:
-        # Moving into empty cell
-        dest.side = source.side
-        dest.set_troops(source.side, move_amount)
-        dest.age = 0
-    elif dest.side == source.side:
-        # Moving into friendly cell
-        dest.add_troops(move_amount)
-    else:
-        # Moving into enemy cell - start combat
-        var current = dest.troop_values[source.side]
-        var max_capacity = dest.get_max_capacity()
-        dest.troop_values[source.side] = min(current + move_amount, max_capacity)
-        dest.side = Cell.SIDE_FIGHT
-    
-    cell_changed.emit(source)
-    cell_changed.emit(dest)
 
 func on_cell_click(cell: Cell, direction_mask: int):
     if cell.side != current_player:
@@ -402,13 +194,6 @@ func setup_network(nm: NetworkManager):
     network_manager = nm
     print("DEBUG: GameManager.setup_network, nm.is_host=%s" % nm.is_host)
     nm.set_game_manager(self)
-    nm.player_left.connect(_check_victory.bind())
-
-func _check_victory(player_info: Dictionary = {}):
-    if network_manager.get_player_count() == 1:
-        var remaining_players = network_manager.players.values()
-        var winner = remaining_players[0].side
-        game_over.emit(winner)
 
 # Get game statistics
 func get_game_stats() -> Dictionary:
@@ -422,23 +207,6 @@ func get_game_stats() -> Dictionary:
     stats["game_speed"] = game_speed
     
     return stats
-
-# Configuration functions
-func set_fight_intensity(intensity: int):
-    fight_intensity = clamp(intensity, 1, 10)
-    print("Fight intensity set to %d" % fight_intensity)
-
-func set_move_speed(speed: int):
-    move_speed = clamp(speed, 1, 10)
-    print("Move speed set to %d" % move_speed)
-
-func toggle_decay(enabled: bool):
-    enable_decay = enabled
-    print("Decay %s" % ("enabled" if enabled else "disabled"))
-
-func toggle_growth(enabled: bool):
-    enable_growth = enabled
-    print("Growth %s" % ("enabled" if enabled else "disabled"))
 
 # Misc
 func play_success_sound():
@@ -460,17 +228,3 @@ func _deserialize_board(data: Dictionary) -> Board:
         cell.growth = cell_data.growth
     
     return temp
-
-func _serialise_visible(visible: Array):
-    var data = []
-    for cell in visible:
-        data.append({
-            "index": cell.index,
-            "side": cell.side,
-            "troop_values": cell.troop_values.duplicate(),
-            "level": cell.level,
-            "growth": cell.growth,
-            "seen_by": cell.seen_by.duplicate(),
-        })
-
-    network_manager.rpc_all_clients("_track_cells", data, current_player)

@@ -374,7 +374,7 @@ func draw_fighting_cell(cell: Cell, center: Vector2):
 
 func draw_town_indicator(cell: Cell):
     var center = get_hex_center(cell)
-    var indicator_size = Vector2(6, 6)
+    var indicator_size = Vector2(8, 8)
     var indicator_pos = center - indicator_size / 2
     var indicator_rect = Rect2(indicator_pos, indicator_size)
     
