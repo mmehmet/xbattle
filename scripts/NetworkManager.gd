@@ -238,42 +238,64 @@ func set_game_manager(gm: GameManager):
     game_manager = gm
 
 @rpc("any_peer", "call_local", "reliable")
-func _track_cell(cell_data: Dictionary):
-    if is_host and game_manager:
-        # Update board_of_truth with new cell data
-        var cell = game_manager.board_of_truth.get_cell_by_index(cell_data.index)
-        cell.side = cell_data.side
-        cell.troop_values = cell_data.troops
-        cell.direction_vectors = cell_data.directions
-        cell.level = cell_data.level
-        cell.growth = cell_data.growth
-        print("player %d moved to %d-%d" % [cell.side, cell.x, cell.y])
+func _track_cells(visible, side):
+    if not is_host or not game_manager:
+        return
 
-        # Update fog for all players on authoritative board
-        var player_vals = players.values()
-        for p in player_vals:
-            game_manager.board_of_truth.update_fog(p.side)
-        
-        # Check visibility and send updates
-        for player in player_vals.filter(func(p): return p.side != cell.side):
-            if cell.is_seen_by(player.side):
-                print("msg to player %d about player %d" % [player.side, cell.side])
-                send_cell_update(player.peer_id, cell)
+    var reality = game_manager.board_of_truth.cell_list
+    var new_info = []
+    var updates = {}
+    var player_vals = players.values()
+    var peer_id = multiplayer.get_remote_sender_id()
 
-func send_cell_update(to_peer_id: int, cell: Cell):
-    var update_data = {
-        "index": cell.index,
-        "side": cell.side,
-        "troops": cell.troop_values.duplicate(),
-        "level": cell.level,
-        "growth": cell.growth,
-        "directions": cell.direction_vectors.duplicate(),
-        "age": cell.age
-    }
-    rpc_id(to_peer_id, "_receive_cell_update", update_data)
+    for player in player_vals:
+        updates[player.peer_id] = []
+
+    for cell in visible:
+        var truth = reality[cell.index]
+        if cell.side == side:
+            truth.side = cell.side
+            truth.troop_values = cell.troop_values
+            truth.level = cell.level
+            truth.growth = cell.growth
+            truth.seen_by = cell.seen_by
+        else:
+            truth.seen_by[side] = true
+
+        for player in player_vals:
+            if truth.is_seen_by(player.side):
+                updates[player.peer_id].append({
+                    "index": truth.index,
+                    "side": truth.side,
+                    "troop_values": truth.troop_values,
+                    "level": truth.level,
+                    "growth": truth.growth,
+                    "seen_by": truth.seen_by,
+                })
+
+    for peer in updates:
+        var update = updates[peer]
+        if update.size():
+            rpc_id(peer, "_receive_fog_update", update)
 
 @rpc("any_peer", "call_local", "unreliable")
-func _receive_board_update(updates: Array):
+func _receive_fog_update(data):
+    if not game_manager or not game_manager.board:
+        return
+
+    for cell in data:
+        var truth = game_manager.board.cell_list[cell.index]
+        truth.index = cell.index
+        truth.side = cell.side
+        truth.troop_values = cell.troop_values
+        truth.level = cell.level
+        truth.growth = cell.growth
+        truth.seen_by = cell.seen_by
+
+    game_manager.board.queue_redraw()
+
+@rpc("any_peer", "call_local", "unreliable")
+func _receive_board_update(updates):
     if is_host or not game_manager or not game_manager.board:
         return
     

@@ -39,13 +39,13 @@ const COLOURS = {
 @export var height: int = 15
 @export var border_width: int = 1
 @export var show_direction_vectors: bool = true
-@export var show_troop_numbers: bool = true
+@export var show_troop_numbers: bool = false
+@export var cell_list: Array[Cell] = []  # 1D list for iteration
 
 # Cell storage
 var cell_height: int = Cell.DEFAULT_CELL_SIZE
 var cell_width = 2 * cell_height / sqrt(3)
 var cells: Array[Array] = []  # 2D array of Cell objects
-var cell_list: Array[Cell] = []  # 1D list for iteration
 
 # Game reference
 var game_manager: GameManager
@@ -403,24 +403,17 @@ func draw_fog(hex_points: PackedVector2Array):
         border_points.append(hex_points[0])
         draw_polyline(border_points, Color.BLACK, border_width)
 
-func get_fog(side: int) -> Array[Cell]:
-    var visible_cells: Array[Cell] = []
-    for cell in cell_list:
-        if cell.is_seen_by(side):
-            visible_cells.append(cell)
-    return visible_cells
-
-func update_fog(player: int):
-    var owned_cells = get_cells_for_side(player)
+func update_fog(player: int, army: Array[Cell]) -> Array:
+    var fog_of_war = []
     for cell in cell_list:
         cell.seen_by[player] = false
-        if cell.side == player:
-            cell.seen_by[player] = true
-        else:
-            for owned_cell in owned_cells:
-                if cell.get_distance(owned_cell) <= Cell.HORIZON:
-                    cell.seen_by[player] = true
-                    break
+        for own_cell in army:
+            if cell.get_distance(own_cell) <= Cell.HORIZON:
+                cell.seen_by[player] = true
+                fog_of_war.append(cell)
+                break
+
+    return fog_of_war
 
 func get_render_direction(direction_index: int) -> Vector2:
     # Convert logical grid directions to visual directions

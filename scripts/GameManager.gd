@@ -83,7 +83,7 @@ func start_new_game(config: Dictionary):
     
     board_updated.emit()
     if board:
-        board.update_fog(current_player)
+        board.update_fog(current_player, board.get_cells_for_side(current_player))
 
 func concede_defeat():
     if player_count == 2:
@@ -108,14 +108,14 @@ func update_board():
         return
     
     # Update fog of war visibility
-    board.update_fog(current_player)
+    var army = board.get_cells_for_side(current_player)
+    var visible = board.update_fog(current_player, army)
     
     # Randomize update order (important for fairness)
-    var cell_order = board.cell_list.duplicate()
-    cell_order.shuffle()
+    army.shuffle()
     
     # Update each cell
-    for cell in cell_order:
+    for cell in army:
         update_cell_growth(cell)
         update_cell_decay(cell)
         update_cell_combat(cell)
@@ -131,6 +131,8 @@ func update_board():
         print("Game Over! Draw - all players eliminated")
     
     board_updated.emit()
+    if network_manager:
+        _serialise_visible(visible)
 
 # Update troop growth (towns and bases)
 func update_cell_growth(cell: Cell):
@@ -271,7 +273,6 @@ func move_troops(source: Cell, dest: Cell):
         dest.side = source.side
         dest.set_troops(source.side, move_amount)
         dest.age = 0
-        on_cell_captured(dest)
     elif dest.side == source.side:
         # Moving into friendly cell
         dest.add_troops(move_amount)
@@ -310,17 +311,6 @@ func on_cell_command(cell: Cell, command: int):
         CMD_PARATROOPS: execute_paratroops(cell)
         CMD_ARTILLERY: execute_artillery(cell)
 
-func on_cell_captured(cell: Cell):
-    if network_manager:
-        network_manager.rpc_all_clients("_track_cell", {
-            "index": cell.index,
-            "side": cell.side, 
-            "troops": cell.troop_values,
-            "directions": cell.direction_vectors,
-            "level": cell.level,
-            "growth": cell.growth
-        })
-
 func execute_attack(cell: Cell):
     # Basic attack - boost troop movement temporarily
     for i in Cell.MAX_DIRECTIONS:
@@ -331,7 +321,14 @@ func execute_attack(cell: Cell):
 func execute_dig(cell: Cell):
     if cell.level <= Board.DEEP_SEA:
         return # Already at min depth
-       
+
+    if cell.growth > 0:
+        return # cell contains a town
+
+    for troops in cell.troop_values:
+        if troops > 0:
+            return # cell contains troops
+
     # Find adjacent friendly cell with enough troops
     for connection in cell.connections:
         if connection != null and connection.side == current_player and connection.get_troop_count() >= COST_DIG:
@@ -346,6 +343,13 @@ func execute_fill(cell: Cell):
     # Raise terrain level, costs troops
     if cell.level > Board.HIGH_HILLS:
         return # nothing left to fill
+
+    if cell.growth > 0:
+        return # cell contains a town
+
+    for troops in cell.troop_values:
+        if troops > 0:
+            return # cell contains troops
 
     for connection in cell.connections:
         if connection != null and connection.side == current_player and connection.get_troop_count() >= COST_FILL:
@@ -368,10 +372,10 @@ func execute_build(cell: Cell):
         play_success_sound()
 
 func execute_scuttle(cell: Cell):
-    # Destroy all troops in cell
-    cell.set_troops(cell.side, 0)
-    cell.side = Cell.SIDE_NONE
+    # Destroy town in cell
+    cell.growth = 0
     cell_changed.emit(cell)
+    play_success_sound()
 
 func execute_paratroops(cell: Cell):
     # TODO: Implement airborne assault
@@ -437,13 +441,6 @@ func toggle_growth(enabled: bool):
     print("Growth %s" % ("enabled" if enabled else "disabled"))
 
 # Misc
-func array_intersect(a1: Array, a2: Array) -> Array:
-    var result = []
-    for item in a1:
-        if a2.has(item):
-            result.append(item)
-    return result
-
 func play_success_sound():
    var audio = AudioStreamPlayer.new()
    add_child(audio)
@@ -463,3 +460,17 @@ func _deserialize_board(data: Dictionary) -> Board:
         cell.growth = cell_data.growth
     
     return temp
+
+func _serialise_visible(visible: Array):
+    var data = []
+    for cell in visible:
+        data.append({
+            "index": cell.index,
+            "side": cell.side,
+            "troop_values": cell.troop_values.duplicate(),
+            "level": cell.level,
+            "growth": cell.growth,
+            "seen_by": cell.seen_by.duplicate(),
+        })
+
+    network_manager.rpc_all_clients("_track_cells", data, current_player)
