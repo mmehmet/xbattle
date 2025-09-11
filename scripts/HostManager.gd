@@ -185,14 +185,14 @@ func update_cell_movement(cell: Cell):
     var directions = range(Cell.MAX_DIRECTIONS)
     directions.shuffle()
     
-    print("processing cell directions: ", cell.direction_vectors)
-    print("processing cell CONNECTIONS: ", cell.connections)
     for dir in directions:
         if cell.direction_vectors[dir] and cell.connections[dir] != null:
             move_troops(cell, cell.connections[dir])
 
 # Move troops between cells (core movement logic)
 func move_troops(source: Cell, dest: Cell):
+    if dest.get_troop_count() < 1:
+        print("moving from %d,%d (idx=%d) to %d,%d (idx=%d)" % [source.x, source.y, source.index, dest.x, dest.y, dest.index])
     if dest.level < Board.FLAT_LAND:
         return # Can't move into sea
     
@@ -241,5 +241,6 @@ func move_troops(source: Cell, dest: Cell):
         dest.troop_values[source.side] = min(current + move_amount, max_capacity)
         dest.side = Cell.SIDE_FIGHT
     
+    print("dest is ", [dest.x, dest.y])
     network_manager.send_cell_delta(source)
     network_manager.send_cell_delta(dest)

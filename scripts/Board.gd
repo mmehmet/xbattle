@@ -155,14 +155,10 @@ func setup_connections():
 func setup_cell_connections(cell: Cell):
     var hex = get_hex_directions(cell.x)
     for i in Cell.MAX_DIRECTIONS:
-        var dir = hex[i]
-        var neighbor_pos = Vector2i(cell.x, cell.y) + dir
-        
+        cell.connections[i] = null
+        var neighbor_pos = Vector2i(cell.x, cell.y) + hex[i]
         if is_valid_position(neighbor_pos):
-            var neighbor = cells[neighbor_pos.x][neighbor_pos.y]
-            cell.connections[i] = neighbor
-        else:
-            cell.connections[i] = null
+            cell.connections[i] = cells[neighbor_pos.x][neighbor_pos.y]
 
 # COORDINATE SYSTEM
 func is_valid_position(pos: Vector2i) -> bool:
