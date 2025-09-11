@@ -45,10 +45,10 @@ func start_new_game(config: Dictionary):
         board = Board.new(width, height)
         board.generate_terrain(config.hill_density, config.sea_density, config.forest_density)
         board.place_random_towns(config.town_density)
-        board.place_player_bases(player_count)
+        var bases = board.place_player_bases(player_count)
         print("Host generated board, playing as side %d" % current_player)
         
-        var board_data = network_manager.serialize_board(board)
+        var board_data = network_manager.serialize_board(board, bases)
         network_manager.rpc_all_clients("_receive_board_data", board_data)
         config["board_data"] = board_data  # So we take client path below
     
@@ -69,6 +69,8 @@ func start_new_game(config: Dictionary):
     print("Client received board from host, playing as side %d" % current_player)
     
     board_updated.emit()
+    if board:
+        board.update_fog(current_player, board.get_cells_for_side(current_player))
 
 func concede_defeat():
     if player_count == 2:
@@ -89,6 +91,7 @@ func on_cell_click(cell: Cell, direction_mask: int):
             cell.set_direction(i, not current_state)
     
     cell_changed.emit(cell)
+    network_manager.send_click(cell)
 
 func on_cell_command(cell: Cell, command: int):
     if command != CMD_DIG and command != CMD_FILL and cell.side != current_player:

@@ -74,26 +74,31 @@ func stop_hosting():
 
 func send_cell_delta(cell: Cell):
     if is_host:
-        var cell_data = {
+        var data = {
             "index": cell.index,
             "side": cell.side, 
             "troops": cell.troop_values,
             "level": cell.level,
-            "growth": cell.growth
+            "growth": cell.growth,
+            "seen_by": cell.seen_by,
         }
-        rpc("_receive_cell_delta", cell_data)
+        
+        for player in players.values():
+            if cell.seen_by[player.side]:
+                rpc_id(player.peer_id, "_receive_cell_delta", data)
 
-@rpc("any_peer", "reliable")
-func _receive_cell_delta(cell_data: Dictionary):
-    if is_host or not game_manager or not game_manager.board:
+@rpc("any_peer", "call_local", "reliable")
+func _receive_cell_delta(data: Dictionary):
+    if not game_manager or not game_manager.board:
         return
     
-    var cell = game_manager.board.get_cell_by_index(cell_data.index)
+    var cell = game_manager.board.get_cell_by_index(data.index)
     if cell:
-        cell.side = cell_data.side
-        cell.troop_values = cell_data.troops
-        cell.level = cell_data.level
-        cell.growth = cell_data.growth
+        cell.side = data.side
+        cell.troop_values = data.troops
+        cell.level = data.level
+        cell.growth = data.growth
+        cell.seen_by = data.seen_by
         game_manager.board.queue_redraw()
 
 # CLIENT FUNCTIONS  
@@ -231,13 +236,13 @@ func _game_starting(config: Dictionary):
 func _generate_and_send_board(config: Dictionary):
     game_started.emit(config)
 
-func serialize_board(board: Board) -> Dictionary:
+func serialize_board(board: Board, bases: Array[Cell]) -> Dictionary:
     if host_manager:
-        host_manager.setup(self, board)
+        host_manager.setup(self, board, bases)
 
-    var cell_data = []
+    var data = []
     for cell in board.cell_list:
-        cell_data.append({
+        data.append({
             "x": cell.x, "y": cell.y, "index": cell.index,
             "side": cell.side, "troops": cell.troop_values.duplicate(),
             "level": cell.level, "growth": cell.growth
@@ -246,7 +251,7 @@ func serialize_board(board: Board) -> Dictionary:
     return {
         "width": board.width,
         "height": board.height,
-        "cells": cell_data
+        "cells": data
     }
 
 @rpc("any_peer", "call_local", "reliable")
@@ -329,87 +334,64 @@ func _receive_board_update(updates):
     if is_host or not game_manager or not game_manager.board:
         return
     
-    for cell_data in updates:
-        var cell = game_manager.board.get_cell_by_index(cell_data.index)
+    for data in updates:
+        var cell = game_manager.board.get_cell_by_index(data.index)
         if cell:
-            cell.side = cell_data.side
-            cell.troop_values = cell_data.troops
-            cell.level = cell_data.level
-            cell.growth = cell_data.growth
-            cell.direction_vectors = cell_data.directions
-            cell.age = cell_data.age
+            cell.side = data.side
+            cell.troop_values = data.troops
+            cell.level = data.level
+            cell.growth = data.growth
+            cell.direction_vectors = data.directions
+            cell.age = data.age
     
     if updates.size() > 0:
         game_manager.board.queue_redraw()
 
 @rpc("any_peer", "call_local", "unreliable")
-func _receive_cell_update(cell_data: Dictionary):
+func _receive_cell_update(data: Dictionary):
     if not game_manager or not game_manager.board:
         return
     
-    print("received update from player %d" % cell_data.side)
-    var cell = game_manager.board.get_cell_by_index(cell_data.index)
+    print("received update from player %d" % data.side)
+    var cell = game_manager.board.get_cell_by_index(data.index)
     if cell:
-        cell.side = cell_data.side
-        cell.troop_values = cell_data.troops
-        cell.level = cell_data.level
-        cell.growth = cell_data.growth
-        cell.direction_vectors = cell_data.directions
-        cell.age = cell_data.age
+        cell.side = data.side
+        cell.troop_values = data.troops
+        cell.level = data.level
+        cell.growth = data.growth
+        cell.direction_vectors = data.directions
+        cell.age = data.age
         game_manager.board.queue_redraw()
 
 # PLAYER INPUT SYNCHRONIZATION
-func send_cell_command(cell: Cell, command: int):
-    if not connected or not game_manager:
+func send_click(cell: Cell):
+    if not connected:
         return
     
-    var command_data = {
+    var data = {
         "cell_index": cell.index,
-        "command": command,
-        "timestamp": Time.get_ticks_msec()
+        "side": cell.side,
+        "troops": cell.troop_values,
+        "level": cell.level,
+        "growth": cell.growth,
+        "directions": cell.direction_vectors,
     }
     
-    if is_host:
-        _process_cell_command(command_data)
-    else:
-        rpc_id(1, "_receive_cell_command", command_data)
+    rpc_id(1, "_receive_cell_click", data)
 
-func send_cell_click(cell: Cell, direction_mask: int):
-    if not connected or not game_manager:
+@rpc("any_peer", "call_local", "reliable") 
+func _receive_cell_click(data: Dictionary):
+    if not is_host or not host_manager:
         return
-    
-    var click_data = {
-        "cell_index": cell.index,
-        "direction_mask": direction_mask,
-        "timestamp": Time.get_ticks_msec()
-    }
-    
-    if is_host:
-        _process_cell_click(click_data)
-    else:
-        rpc_id(1, "_receive_cell_click", click_data)
+
+    print("new cell directions:", data.directions)
+    host_manager.update_cell(data)
 
 @rpc("any_peer", "call_local", "reliable")
 func _receive_cell_command(command_data: Dictionary):
     if not is_host:
         return
-    _process_cell_command(command_data)
-
-@rpc("any_peer", "call_local", "reliable") 
-func _receive_cell_click(click_data: Dictionary):
-    if not is_host:
-        return
-    _process_cell_click(click_data)
-
-func _process_cell_command(command_data: Dictionary):
-    var cell = game_manager.board.get_cell_by_index(command_data.cell_index)
-    if cell:
-        game_manager.on_cell_command(cell, command_data.command)
-
-func _process_cell_click(click_data: Dictionary):
-    var cell = game_manager.board.get_cell_by_index(click_data.cell_index)
-    if cell:
-        game_manager.on_cell_click(cell, click_data.direction_mask)
+    host_manager.update_cell(command_data)
 
 # UTILITY FUNCTIONS
 func _find_next_available_side() -> int:

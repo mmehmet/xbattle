@@ -15,9 +15,12 @@ var update_interval: float = 0.5  # Updates per second
 func _ready():
     set_process(true)
 
-func setup(nm: NetworkManager, board_of_truth: Board):
+func setup(nm: NetworkManager, board_of_truth: Board, bases: Array[Cell]):
     network_manager = nm
     board = board_of_truth
+    for base in bases:
+        nm.send_cell_delta(base)
+
     nm.player_left.connect(_check_victory.bind())
 
 func _check_victory(player_info: Dictionary = {}):
@@ -38,7 +41,7 @@ func update_board():
         return
     
     # Randomize update order (important for fairness)
-    var cells = board.cell_list
+    var cells = board.cell_list.duplicate()
     for player in network_manager.players.values():
         var army = cells.filter(func(c): return c.side == player.side)
         board.update_fog(player.side, army)
@@ -59,6 +62,26 @@ func update_board():
         network_manager.rpc_all_clients("_game_over", winner)
         print("Game Over! Draw - all players eliminated")
 
+# receive update from the UI
+func update_cell(data: Dictionary):
+    var cell = board.get_cell_by_index(data.cell_index)
+    if cell:
+        cell.side = data.side
+        cell.troop_values = data.troops
+        cell.level = data.level
+        cell.growth = data.growth
+        cell.direction_vectors = data.directions
+        cell.move = cell.get_active_directions()
+
+        var cells = board.cell_list.filter(func(c): return cell.get_distance(c) <= Cell.HORIZON)
+        for player in network_manager.players.values():
+            cell.seen_by[player.side] = false
+            for check in cells:
+                if check.side == player.side:
+                    cell.seen_by[player.side] = true
+                    break
+        network_manager.send_cell_delta(cell)
+                
 # Update troop growth (towns and bases)
 func update_cell_growth(cell: Cell):
     if cell.growth <= 0 or cell.side < 0:
@@ -83,7 +106,7 @@ func update_cell_growth(cell: Cell):
             changed = true
         
         if changed and network_manager:
-                network_manager.send_cell_delta(cell)
+            network_manager.send_cell_delta(cell)
 
 # Update troop decay (optional feature)
 func update_cell_decay(cell: Cell):
@@ -162,6 +185,8 @@ func update_cell_movement(cell: Cell):
     var directions = range(Cell.MAX_DIRECTIONS)
     directions.shuffle()
     
+    print("processing cell directions: ", cell.direction_vectors)
+    print("processing cell CONNECTIONS: ", cell.connections)
     for dir in directions:
         if cell.direction_vectors[dir] and cell.connections[dir] != null:
             move_troops(cell, cell.connections[dir])

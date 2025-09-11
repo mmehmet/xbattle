@@ -104,15 +104,26 @@ func get_hex_directions(x: int) -> Array[Vector2i]:
             Vector2i(1, 0),    # RIGHT_DOWN
             Vector2i(1, -1)    # RIGHT_UP
         ]
-    else:  # Odd column
-        return [
-            Vector2i(0, -1),   # UP
-            Vector2i(-1, 0),   # LEFT_UP
-            Vector2i(-1, 1),   # LEFT_DOWN
-            Vector2i(0, 1),    # DOWN
-            Vector2i(1, 1),    # RIGHT_DOWN
-            Vector2i(1, 0)     # RIGHT_UP
-        ]
+
+    return [
+        Vector2i(0, -1),   # UP
+        Vector2i(-1, 0),   # LEFT_UP
+        Vector2i(-1, 1),   # LEFT_DOWN
+        Vector2i(0, 1),    # DOWN
+        Vector2i(1, 1),    # RIGHT_DOWN
+        Vector2i(1, 0)     # RIGHT_UP
+    ]
+
+func get_render_direction(direction_index: int) -> Vector2:
+    # Convert logical grid directions to visual directions
+    match direction_index:
+        0: return Vector2(0, -1)        # UP
+        1: return Vector2(-0.866, -0.5) # LEFT_UP
+        2: return Vector2(-0.866, 0.5)  # LEFT_DOWN
+        3: return Vector2(0, 1)         # DOWN
+        4: return Vector2(0.866, 0.5)   # RIGHT_DOWN
+        5: return Vector2(0.866, -0.5)  # RIGHT_UP
+        _: return Vector2.ZERO
 
 # BOARD GENERATION
 func generate_board():
@@ -213,11 +224,12 @@ func place_random_towns(town_density: int):
         if cell.level >= 0 and town_density > 0 and randi() % 100 < town_density:
             cell.growth = 50 + randi() % 51
 
-func place_player_bases(player_count: int, base_count_per_player: int = 1):
-    print("Placing %d bases for %d players" % [base_count_per_player, player_count])
-    
+func place_player_bases(player_count: int, base_count: int = 1) -> Array[Cell]:
+    print("Placing %d bases for %d players" % [base_count, player_count])
+
+    var arr: Array[Cell] = []
     for player in player_count:
-        for base_num in base_count_per_player:
+        for base_num in base_count:
             var attempts = 0
             while attempts < 1000:
                 var cell = cell_list[randi() % cell_list.size()]
@@ -227,9 +239,12 @@ func place_player_bases(player_count: int, base_count_per_player: int = 1):
                     cell.set_troops(player, 20)
                     cell.growth = 75
                     print("Placed base for player %d at (%d,%d)" % [player, cell.x, cell.y])
+                    arr.append(cell)
                     break
                 
                 attempts += 1
+
+    return arr
 
 func is_good_base_location(cell: Cell, player: int) -> bool:
     var min_distance = 3
@@ -414,17 +429,6 @@ func update_fog(player: int, army: Array[Cell]) -> Array:
                 break
 
     return fog_of_war
-
-func get_render_direction(direction_index: int) -> Vector2:
-    # Convert logical grid directions to visual directions
-    match direction_index:
-        0: return Vector2(0, -1)        # UP
-        1: return Vector2(-0.866, -0.5) # LEFT_UP
-        2: return Vector2(-0.866, 0.5)  # LEFT_DOWN
-        3: return Vector2(0, 1)         # DOWN
-        4: return Vector2(0.866, 0.5)   # RIGHT_DOWN
-        5: return Vector2(0.866, -0.5)  # RIGHT_UP
-        _: return Vector2.ZERO
 
 func get_terrain_color(level) -> Color:
     if COLOURS.has(level):
