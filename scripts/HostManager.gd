@@ -170,8 +170,6 @@ func update_cell_movement(cell: Cell):
 
 # Move troops between cells (core movement logic)
 func move_troops(source: Cell, dest: Cell):
-    if dest.get_troop_count() < 1:
-        print("moving from %d,%d (idx=%d) to %d,%d (idx=%d)" % [source.x, source.y, source.index, dest.x, dest.y, dest.index])
     if dest.level < Board.FLAT_LAND:
         return # Can't move into sea
     

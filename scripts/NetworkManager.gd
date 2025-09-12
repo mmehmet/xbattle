@@ -289,7 +289,6 @@ func _receive_cell_click(data: Dictionary):
     if not is_host or not host_manager:
         return
 
-    print("new cell directions:", data.directions)
     host_manager.update_cell(data)
 
 @rpc("any_peer", "call_local", "reliable")
