@@ -42,16 +42,18 @@ func update_board():
     
     # Randomize update order (important for fairness)
     var cells = board.cell_list.duplicate()
-    for player in network_manager.players.values():
-        var army = cells.filter(func(c): return c.side == player.side)
-        board.update_fog(player.side, army)
-        
     cells.shuffle()
     for cell in cells:
         update_cell_growth(cell)
         update_cell_decay(cell)
         update_cell_combat(cell)
         update_cell_movement(cell)
+    
+    # Send updates
+    for cell in cells:
+        if cell.outdated:
+            network_manager.send_cell_delta(cell)
+            cell.outdated = false
     
     # Check for game over
     var winner = board.check_victory()
@@ -90,7 +92,6 @@ func update_cell_growth(cell: Cell):
     var max_capacity = cell.get_max_capacity()
     var current_troops = cell.get_troop_count()
     if current_troops < max_capacity:
-        var changed = false
         var growth_chance = cell.growth
         
         # Super towns can produce multiple troops per turn
@@ -98,15 +99,12 @@ func update_cell_growth(cell: Cell):
             var guaranteed_troops = cell.growth / 100
             cell.add_troops(guaranteed_troops)
             growth_chance = cell.growth % 100
-            changed = true
+            cell.outdated = true
         
         # Random chance for additional troop
         if randi() % 100 < growth_chance:
             cell.add_troops(1)
-            changed = true
-        
-        if changed and network_manager:
-            network_manager.send_cell_delta(cell)
+            cell.outdated = true
 
 # Update troop decay (optional feature)
 func update_cell_decay(cell: Cell):
@@ -119,18 +117,15 @@ func update_cell_decay(cell: Cell):
         var current_troops = cell.get_troop_count()
         if current_troops > 0:
             cell.set_troops(cell.side, current_troops - 1)
+            cell.outdated = true
             if cell.get_troop_count() < 1:
                 cell.side = Cell.SIDE_NONE
-
-            if network_manager:
-                network_manager.send_cell_delta(cell)
 
 # Update combat resolution
 func update_cell_combat(cell: Cell):
     if not cell.is_fighting():
         return
     
-    var changed = false
     var sides_with_troops = {}
     for side in Cell.MAX_PLAYERS:
         if cell.troop_values[side] > 0:
@@ -138,16 +133,16 @@ func update_cell_combat(cell: Cell):
     
     if sides_with_troops.size() <= 1:
         # Combat resolved, assign winner
+        cell.outdated = true
         if sides_with_troops.size() == 1:
             cell.side = sides_with_troops.keys()[0]
         else:
             cell.side = Cell.SIDE_NONE
-        changed = true
         return
     
     # Calculate combat losses (based on original formula)
-    if not changed:
-        changed = true
+    if not cell.outdated:
+        cell.outdated = true
         var total_enemies = {}
         for side in sides_with_troops:
             total_enemies[side] = 0
@@ -168,9 +163,6 @@ func update_cell_combat(cell: Cell):
                     var losses = int(loss_factor + 0.5)
                     losses = min(losses, my_troops)
                     cell.troop_values[side] = max(0, cell.troop_values[side] - losses)
-    
-    if changed and network_manager:
-        network_manager.send_cell_delta(cell)
 
 # Update troop movement
 func update_cell_movement(cell: Cell):
@@ -241,5 +233,5 @@ func move_troops(source: Cell, dest: Cell):
         dest.troop_values[source.side] = min(current + move_amount, max_capacity)
         dest.side = Cell.SIDE_FIGHT
     
-    network_manager.send_cell_delta(source)
-    network_manager.send_cell_delta(dest)
+    source.outdated = true
+    dest.outdated = true

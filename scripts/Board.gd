@@ -362,28 +362,25 @@ func draw_owned_cell(cell: Cell, center: Vector2):
             draw_string(font, text_pos, text, HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color.WHITE)
 
 func draw_fighting_cell(cell: Cell, center: Vector2):
-    var sides_with_troops = []
-    for side in Cell.MAX_PLAYERS:
-        if cell.troop_values[side] > 0:
-            sides_with_troops.append(side)
+    var strongest_side = -1
+    var max_troops = 0
     
-    if sides_with_troops.size() <= 1:
+    # Find side with most troops
+    for side in Cell.MAX_PLAYERS:
+        if cell.troop_values[side] > max_troops:
+            max_troops = cell.troop_values[side]
+            strongest_side = side
+    
+    if strongest_side < 0:
         return
     
-    var segment_angle = 2.0 * PI / sides_with_troops.size()
+    # Draw single circle for strongest side
+    var max_radius = cell_height * 0.3
+    var radius = max_radius * (float(max_troops) / float(cell.get_max_capacity()))
+    radius = max(radius, 4.0)
     
-    for i in sides_with_troops.size():
-        var side = sides_with_troops[i]
-        var color = get_player_color(side)
-        var troops = cell.troop_values[side]
-        
-        var start_angle = i * segment_angle
-        var end_angle = (i + 1) * segment_angle
-        
-        var radius = 12.0 * (float(troops) / 10.0)
-        radius = clamp(radius, 4.0, 15.0)
-        
-        draw_arc(center, radius, start_angle, end_angle, 8, color, 3.0)
+    var color = get_player_color(strongest_side)
+    draw_circle(center, radius, color)
 
 func draw_town_indicator(cell: Cell):
     var center = get_hex_center(cell)
@@ -416,17 +413,27 @@ func draw_fog(hex_points: PackedVector2Array):
         border_points.append(hex_points[0])
         draw_polyline(border_points, Color.BLACK, border_width)
 
-func update_fog(player: int, army: Array[Cell]) -> Array:
-    var fog_of_war = []
-    for cell in cell_list:
-        cell.seen_by[player] = false
-        for own_cell in army:
-            if cell.get_distance(own_cell) <= Cell.HORIZON:
-                cell.seen_by[player] = true
-                fog_of_war.append(cell)
-                break
+func update_fog(player: int, cell: Cell):
+    if (player == Cell.SIDE_FIGHT):
+        return
 
-    return fog_of_war
+    var queue = [{"cell": cell, "distance": 0}]
+    var visited = {cell.index: true}
+    
+    while queue.size() > 0:
+        var current = queue.pop_front()
+        var check_cell = current.cell
+        var dist = current.distance
+        
+        check_cell.seen_by[player] = true
+        
+        if dist < Cell.HORIZON:
+            for neighbor in get_neighbors(check_cell):
+                if not visited.has(neighbor.index):
+                    visited[neighbor.index] = true
+                    queue.push_back({"cell": neighbor, "distance": dist + 1})
+
+    queue_redraw()
 
 func get_terrain_color(level) -> Color:
     if COLOURS.has(level):
@@ -542,9 +549,6 @@ func get_stats() -> Dictionary:
 
 # UI CALLBACKS
 func on_board_updated():
-    queue_redraw()
-
-func on_cell_changed():
     queue_redraw()
 
 func _to_string() -> String:

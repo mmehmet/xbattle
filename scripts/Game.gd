@@ -21,12 +21,7 @@ func setup_game(config: Dictionary, network_mgr: NetworkManager = null):
     board.game_manager = game_manager
     
     # Connect signals
-    game_manager.board_updated.connect(_on_board_updated)
     game_manager.game_over.connect(_on_game_over)
-
-func _on_board_updated():
-    if board:
-        board.on_board_updated()
 
 func _on_game_over(winner: int):
     print("Game over, winner: %d" % winner)

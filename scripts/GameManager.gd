@@ -25,7 +25,6 @@ const COST_BUILD = 25
 @export var is_paused: bool = false
 
 # Signals for UI updates
-signal board_updated
 signal game_over(winner: int)
 signal cell_changed(cell: Cell)
 
@@ -66,8 +65,7 @@ func start_new_game(config: Dictionary):
     board = _deserialize_board(config.board_data)
     if board:
         print("Client received board from host, playing as side %d" % current_player)
-        board.update_fog(current_player, board.get_cells_for_side(current_player))
-        board_updated.emit()
+        board.update_fog(current_player, board.get_cells_for_side(current_player)[0])
 
 func _deserialize_board(data: Dictionary) -> Board:
     if (network_manager and network_manager.is_host and board):
@@ -103,7 +101,6 @@ func on_cell_click(cell: Cell, direction_mask: int):
             var current_state = cell.direction_vectors[i]
             cell.set_direction(i, not current_state)
     
-    cell_changed.emit(cell)
     network_manager.send_click(cell)
 
 func on_cell_command(cell: Cell, command: int):

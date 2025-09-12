@@ -326,49 +326,8 @@ func _receive_cell_delta(data: Dictionary):
         cell.level = data.level
         cell.growth = data.growth
         cell.seen_by = data.seen_by
-        game_manager.board.queue_redraw()
 
-func send_batch(cells: Array[Cell]):
-    if not is_host:
-        return
-    
-    var updates = {}
-    for player in players.values():
-        updates[player.peer_id] = []
-    
-    for cell in cells:
-        for player in players.values():
-            if cell.is_seen_by(player.side):
-                updates[player.peer_id].append({
-                    "index": cell.index,
-                    "side": cell.side,
-                    "troop_values": cell.troop_values,
-                    "level": cell.level,
-                    "growth": cell.growth,
-                    "seen_by": cell.seen_by,
-                })
-    
-    for peer_id in updates:
-        if updates[peer_id].size() > 0:
-            rpc_id(peer_id, "_receive_cell_batch", updates[peer_id])
-
-@rpc("any_peer", "call_local", "unreliable")
-func _receive_batch(arr: Array):
-    if not game_manager or not game_manager.board:
-        return
-
-    var found = false
-    for data in arr:
-        var cell = game_manager.board.cell_list[data.index]
-        if cell:
-            cell.side = data.side
-            cell.troop_values = data.troop_values
-            cell.level = data.level
-            cell.growth = data.growth
-            cell.seen_by = data.seen_by
-            found = true
-    
-    if found:
+        game_manager.board.update_fog(data.side, cell)
         game_manager.board.queue_redraw()
 
 # UTILITY FUNCTIONS
