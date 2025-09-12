@@ -260,7 +260,7 @@ func update_player_list():
     
     for player_info in players:
         var player_label = Label.new()
-        var suffix = " [HOSTING]" if player_info.is_host else ""
+        var suffix = " [HOST]" if player_info.is_host else ""
         player_label.text = "%d: %s%s" % [player_info.side, player_info.name, suffix]
         
         if player_info.side < Board.player_colors.size():

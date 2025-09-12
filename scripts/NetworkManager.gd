@@ -6,6 +6,7 @@ signal player_left(player_info: Dictionary)
 signal lobby_updated(players: Array)
 signal connection_failed(error: String)
 signal game_started(config: Dictionary)
+signal game_over(winner: String)
 
 const DEFAULT_PORT = 7000
 const MAX_PLAYERS = 11
@@ -169,14 +170,14 @@ func _notify_leaving():
         
         # Notify remaining players
         rpc_all_clients("_player_left", player_info)
-        player_left.emit(player_info)
 
 @rpc("any_peer", "call_local", "reliable")
 func _player_left(player_info: Dictionary):
     if players.has(player_info.peer_id):
         players.erase(player_info.peer_id)
-        player_left.emit(player_info)
         lobby_updated.emit(_get_player_list())
+        if is_host:
+            check_victory()
 
 @rpc("any_peer", "call_local", "reliable")
 func _on_host_disconnected():
@@ -371,15 +372,8 @@ func _on_peer_disconnected(peer_id: int):
     if players.has(peer_id):
         var player_info = players[peer_id]
         players.erase(peer_id)
-        
         if is_host:
             rpc_all_clients("_player_left", player_info)
-            # Check for victory condition
-            if game_manager and players.size() == 1:
-                var winner = players.values()[0].side
-                game_manager.game_over.emit(winner)
-        
-        player_left.emit(player_info)
 
 func _on_connection_failed():
     connection_failed.emit("Connection failed")
@@ -395,9 +389,22 @@ func _on_server_disconnected():
     players.clear()
     connection_failed.emit("Server disconnected")
 
-@rpc("any_peer", "reliable")
-func _game_over(winner: int):
-    game_manager.game_over.emit(winner)
+func update_active(active: Array):
+    for peer_id in players.keys():
+        if players[peer_id].side not in active:
+            players.erase(peer_id)
+
+func check_victory():
+    var players = players.values()
+    if players.size() < 2:
+        var winner = ""
+        if players.size() == 1:
+            winner = players[0].name
+        rpc_all_clients("_game_over", winner)
+
+@rpc("any_peer", "call_local", "reliable")
+func _game_over(winner: String):
+    game_over.emit(winner)
 
 func rpc_all_clients(method: String, arg1 = null, arg2 = null, arg3 = null):
     if arg3 != null:

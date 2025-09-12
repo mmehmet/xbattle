@@ -21,14 +21,6 @@ func setup(nm: NetworkManager, board_of_truth: Board, bases: Array[Cell]):
     for base in bases:
         nm.send_cell_delta(base)
 
-    nm.player_left.connect(_check_victory.bind())
-
-func _check_victory(player_info: Dictionary = {}):
-    if network_manager.get_player_count() == 1:
-        var remaining_players = network_manager.players.values()
-        var winner = remaining_players[0].side
-        network_manager.rpc_all_clients("_game_over", winner)
-
 func _process(delta):
     update_timer += delta
     if update_timer >= update_interval:
@@ -56,13 +48,8 @@ func update_board():
             cell.outdated = false
     
     # Check for game over
-    var winner = board.check_victory()
-    if winner >= 0:
-        network_manager.rpc_all_clients("_game_over", winner)
-        print("Game Over! Winner: Player %d" % winner)
-    elif winner == -2:
-        network_manager.rpc_all_clients("_game_over", winner)
-        print("Game Over! Draw - all players eliminated")
+    network_manager.update_active(board.get_active())
+    network_manager.check_victory()
 
 # receive update from the UI
 func update_cell(data: Dictionary):

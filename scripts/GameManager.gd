@@ -25,7 +25,6 @@ const COST_BUILD = 25
 @export var is_paused: bool = false
 
 # Signals for UI updates
-signal game_over(winner: int)
 signal cell_changed(cell: Cell)
 
 func _ready():
@@ -82,14 +81,6 @@ func _deserialize_board(data: Dictionary) -> Board:
         cell.direction_vectors = cell_data.directions
     
     return temp
-
-func concede_defeat():
-    if player_count == 2:
-        var opponent = 1 - current_player
-        game_over.emit(opponent)
-    else:
-        game_over.emit(-1)  # Multi-player concede
-    print("Player %d conceded" % current_player)
 
 func on_cell_click(cell: Cell, direction_mask: int):
     if cell.side != current_player:

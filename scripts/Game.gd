@@ -12,6 +12,7 @@ func setup_game(config: Dictionary, network_mgr: NetworkManager = null):
     # Setup network if provided
     if network_mgr:
         game_manager.setup_network(network_mgr)
+        network_mgr.game_over.connect(_on_game_over)
     
     game_manager.start_new_game(config)
     
@@ -19,12 +20,9 @@ func setup_game(config: Dictionary, network_mgr: NetworkManager = null):
     board = game_manager.board
     add_child(board)
     board.game_manager = game_manager
-    
-    # Connect signals
-    game_manager.game_over.connect(_on_game_over)
 
-func _on_game_over(winner: int):
-    print("Game over, winner: %d" % winner)
+func _on_game_over(winner: String):
+    print("Game over, winner: %s" % winner)
     
     var viewport = get_window().get_visible_rect().size
     var panel = Panel.new()
@@ -41,7 +39,7 @@ func _on_game_over(winner: int):
     panel.add_child(vbox)
     
     var label = Label.new()
-    label.text = "Player %d Wins!" % winner if winner >= 0 else "Draw!"
+    label.text = "%s Wins!" % winner if winner != "" else "Draw!"
     label.add_theme_font_size_override("font_size", 48)
     label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     vbox.add_child(label)
@@ -59,4 +57,8 @@ func _input(event):
         if event.keycode == KEY_ESCAPE:
             game_ended.emit()
         elif event.keycode == KEY_Q:
-            game_manager.concede_defeat()
+            _concede()
+
+func _concede():
+    if game_manager.network_manager:
+        game_manager.network_manager.rpc_id(1, "_notify_leaving")

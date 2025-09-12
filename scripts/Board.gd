@@ -507,20 +507,13 @@ func get_cells_for_side(side: int) -> Array[Cell]:
             side_cells.append(cell)
     return side_cells
 
-func check_victory() -> int:
+func get_active() -> Array:
     var active_sides = {}
-    
     for cell in cell_list:
         if cell.side >= 0 and cell.side < Cell.MAX_PLAYERS and cell.get_troop_count() > 0:
             active_sides[cell.side] = true
     
-    var active_count = active_sides.size()
-    if active_count == 1:
-        return active_sides.keys()[0]
-    elif active_count == 0:
-        return -2
-    else:
-        return -1
+    return active_sides.keys()
 
 func get_stats() -> Dictionary:
     var stats = {
