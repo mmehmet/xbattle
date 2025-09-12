@@ -37,9 +37,8 @@ func start_new_game(config: Dictionary):
     var width = config.map_size.x
     var height = config.map_size.y
     player_count = config.player_count
+
     print("Starting new game: %dx%d board, %d players" % [width, height, player_count])
-    print("DEBUG: start_new_game called, has board_data=%s, is_host=%s" % [config.has("board_data"), network_manager.is_host if network_manager else false])
-    
     if network_manager and network_manager.is_host and not config.has("board_data"):
         # Host generates and sends board data to clients
         board = Board.new(width, height)
@@ -53,11 +52,10 @@ func start_new_game(config: Dictionary):
         config["board_data"] = board_data  # So we take client path below
     
     # Get MY player side from network manager
+    current_player = 0
     if network_manager:
         var my_info = network_manager.get_my_player_info()
         current_player = my_info.get("side", 0)
-    else:
-        current_player = 0
     
     if not config.has("board_data"):
         return
@@ -66,11 +64,26 @@ func start_new_game(config: Dictionary):
 
     # Client: receive board from host
     board = _deserialize_board(config.board_data)
-    print("Client received board from host, playing as side %d" % current_player)
-    
-    board_updated.emit()
     if board:
+        print("Client received board from host, playing as side %d" % current_player)
         board.update_fog(current_player, board.get_cells_for_side(current_player))
+        board_updated.emit()
+
+func _deserialize_board(data: Dictionary) -> Board:
+    if (network_manager and network_manager.is_host and board):
+        return board
+
+    print("Deserializing board with %d cells" % data.cells.size())
+    var temp = Board.new(data.width, data.height)
+    for cell_data in data.cells:
+        var cell = temp.get_cell_by_index(cell_data.index)
+        cell.side = cell_data.side
+        cell.troop_values = cell_data.troops
+        cell.level = cell_data.level
+        cell.growth = cell_data.growth
+        cell.direction_vectors = cell_data.directions
+    
+    return temp
 
 func concede_defeat():
     if player_count == 2:
@@ -218,16 +231,3 @@ func play_success_sound():
    audio.stream = load("res://assets/dirt.mp3")
    audio.play()
    audio.finished.connect(func(): audio.queue_free())
-
-func _deserialize_board(data: Dictionary) -> Board:
-    print("Deserializing board with %d cells" % data.cells.size())
-    var temp = Board.new(data.width, data.height)
-    
-    for cell_data in data.cells:
-        var cell = temp.get_cell_by_index(cell_data.index)
-        cell.side = cell_data.side
-        cell.troop_values = cell_data.troops
-        cell.level = cell_data.level
-        cell.growth = cell_data.growth
-    
-    return temp

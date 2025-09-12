@@ -129,6 +129,7 @@ func get_render_direction(direction_index: int) -> Vector2:
 func generate_board():
     cells.clear()
     cell_list.clear()
+    var idx = 0
     
     cells.resize(width)
     for x in width:
@@ -139,9 +140,10 @@ func generate_board():
             var cell = Cell.new()
             cell.x = x
             cell.y = y
-            cell.index = y * width + x
+            cell.index = idx
             cells[x][y] = cell
             cell_list.append(cell)
+            idx += 1
     
     setup_connections()
     print("Generated %dx%d board with %d cells" % [width, height, cell_list.size()])

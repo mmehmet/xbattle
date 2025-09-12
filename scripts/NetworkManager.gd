@@ -72,35 +72,6 @@ func stop_hosting():
         players.clear()
         print("Stopped hosting")
 
-func send_cell_delta(cell: Cell):
-    if is_host:
-        var data = {
-            "index": cell.index,
-            "side": cell.side, 
-            "troops": cell.troop_values,
-            "level": cell.level,
-            "growth": cell.growth,
-            "seen_by": cell.seen_by,
-        }
-        
-        for player in players.values():
-            if cell.seen_by[player.side]:
-                rpc_id(player.peer_id, "_receive_cell_delta", data)
-
-@rpc("any_peer", "call_local", "reliable")
-func _receive_cell_delta(data: Dictionary):
-    if not game_manager or not game_manager.board:
-        return
-    
-    var cell = game_manager.board.get_cell_by_index(data.index)
-    if cell:
-        cell.side = data.side
-        cell.troop_values = data.troops
-        cell.level = data.level
-        cell.growth = data.growth
-        cell.seen_by = data.seen_by
-        game_manager.board.queue_redraw()
-
 # CLIENT FUNCTIONS  
 func join_game(player_name: String, address: String, port: int = DEFAULT_PORT) -> bool:
     var peer = ENetMultiplayerPeer.new()
@@ -243,9 +214,14 @@ func serialize_board(board: Board, bases: Array[Cell]) -> Dictionary:
     var data = []
     for cell in board.cell_list:
         data.append({
-            "x": cell.x, "y": cell.y, "index": cell.index,
-            "side": cell.side, "troops": cell.troop_values.duplicate(),
-            "level": cell.level, "growth": cell.growth
+            "x": cell.x,
+            "y": cell.y,
+            "index": cell.index,
+            "side": cell.side,
+            "troops": cell.troop_values.duplicate(),
+            "level": cell.level,
+            "growth": cell.growth,
+            "directions": cell.direction_vectors
         })
     
     return {
@@ -257,7 +233,8 @@ func serialize_board(board: Board, bases: Array[Cell]) -> Dictionary:
 @rpc("any_peer", "call_local", "reliable")
 func _receive_board_data(board_data: Dictionary):
     if is_host:
-        return  # Host doesn't need its own board data
+        print("Host can just use its own board...")
+        return
 
     if game_config.has("board_data"):
         return  # Already received
@@ -271,63 +248,6 @@ func set_game_manager(gm: GameManager):
         return
 
     game_manager = gm
-
-@rpc("any_peer", "call_local", "reliable")
-func _track_cells(visible, side):
-    if not is_host or not game_manager:
-        return
-
-    var reality = game_manager.board_of_truth.cell_list
-    var new_info = []
-    var updates = {}
-    var player_vals = players.values()
-    var peer_id = multiplayer.get_remote_sender_id()
-
-    for player in player_vals:
-        updates[player.peer_id] = []
-
-    for cell in visible:
-        var truth = reality[cell.index]
-        if cell.side == side:
-            truth.side = cell.side
-            truth.troop_values = cell.troop_values
-            truth.level = cell.level
-            truth.growth = cell.growth
-            truth.seen_by = cell.seen_by
-        else:
-            truth.seen_by[side] = true
-
-        for player in player_vals:
-            if truth.is_seen_by(player.side):
-                updates[player.peer_id].append({
-                    "index": truth.index,
-                    "side": truth.side,
-                    "troop_values": truth.troop_values,
-                    "level": truth.level,
-                    "growth": truth.growth,
-                    "seen_by": truth.seen_by,
-                })
-
-    for peer in updates:
-        var update = updates[peer]
-        if update.size():
-            rpc_id(peer, "_receive_fog_update", update)
-
-@rpc("any_peer", "call_local", "unreliable")
-func _receive_fog_update(data):
-    if not game_manager or not game_manager.board:
-        return
-
-    for cell in data:
-        var truth = game_manager.board.cell_list[cell.index]
-        truth.index = cell.index
-        truth.side = cell.side
-        truth.troop_values = cell.troop_values
-        truth.level = cell.level
-        truth.growth = cell.growth
-        truth.seen_by = cell.seen_by
-
-    game_manager.board.queue_redraw()
 
 @rpc("any_peer", "call_local", "unreliable")
 func _receive_board_update(updates):
@@ -345,22 +265,6 @@ func _receive_board_update(updates):
             cell.age = data.age
     
     if updates.size() > 0:
-        game_manager.board.queue_redraw()
-
-@rpc("any_peer", "call_local", "unreliable")
-func _receive_cell_update(data: Dictionary):
-    if not game_manager or not game_manager.board:
-        return
-    
-    print("received update from player %d" % data.side)
-    var cell = game_manager.board.get_cell_by_index(data.index)
-    if cell:
-        cell.side = data.side
-        cell.troop_values = data.troops
-        cell.level = data.level
-        cell.growth = data.growth
-        cell.direction_vectors = data.directions
-        cell.age = data.age
         game_manager.board.queue_redraw()
 
 # PLAYER INPUT SYNCHRONIZATION
@@ -392,6 +296,80 @@ func _receive_cell_command(command_data: Dictionary):
     if not is_host:
         return
     host_manager.update_cell(command_data)
+
+func send_cell_delta(cell: Cell):
+    if not is_host:
+        return
+
+    var data = {
+        "index": cell.index,
+        "side": cell.side, 
+        "troops": cell.troop_values,
+        "level": cell.level,
+        "growth": cell.growth,
+        "seen_by": cell.seen_by,
+    }
+    
+    for player in players.values():
+        if cell.seen_by[player.side]:
+            rpc_id(player.peer_id, "_receive_cell_delta", data)
+
+@rpc("any_peer", "call_local", "reliable")
+func _receive_cell_delta(data: Dictionary):
+    if not game_manager or not game_manager.board:
+        return
+    
+    var cell = game_manager.board.get_cell_by_index(data.index)
+    if cell:
+        cell.side = data.side
+        cell.troop_values = data.troops
+        cell.level = data.level
+        cell.growth = data.growth
+        cell.seen_by = data.seen_by
+        game_manager.board.queue_redraw()
+
+func send_batch(cells: Array[Cell]):
+    if not is_host:
+        return
+    
+    var updates = {}
+    for player in players.values():
+        updates[player.peer_id] = []
+    
+    for cell in cells:
+        for player in players.values():
+            if cell.is_seen_by(player.side):
+                updates[player.peer_id].append({
+                    "index": cell.index,
+                    "side": cell.side,
+                    "troop_values": cell.troop_values,
+                    "level": cell.level,
+                    "growth": cell.growth,
+                    "seen_by": cell.seen_by,
+                })
+    
+    for peer_id in updates:
+        if updates[peer_id].size() > 0:
+            rpc_id(peer_id, "_receive_cell_batch", updates[peer_id])
+
+@rpc("any_peer", "call_local", "unreliable")
+func _receive_batch(arr: Array):
+    if not game_manager or not game_manager.board:
+        return
+
+    var found = false
+    for data in arr:
+        var cell = game_manager.board.cell_list[data.index]
+        if cell:
+            cell.side = data.side
+            cell.troop_values = data.troop_values
+            cell.level = data.level
+            cell.growth = data.growth
+            cell.seen_by = data.seen_by
+            found = true
+    
+    if found:
+        game_manager.board.queue_redraw()
 
 # UTILITY FUNCTIONS
 func _find_next_available_side() -> int:

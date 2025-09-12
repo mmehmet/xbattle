@@ -241,6 +241,5 @@ func move_troops(source: Cell, dest: Cell):
         dest.troop_values[source.side] = min(current + move_amount, max_capacity)
         dest.side = Cell.SIDE_FIGHT
     
-    print("dest is ", [dest.x, dest.y])
     network_manager.send_cell_delta(source)
     network_manager.send_cell_delta(dest)
