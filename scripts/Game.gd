@@ -22,12 +22,14 @@ func setup_game(config: Dictionary, network_mgr: NetworkManager = null):
     board.game_manager = game_manager
 
 func _on_game_over(winner: String):
-    print("Game over, winner: %s" % winner)
+    print("Game over! %s was the winner" % winner)
     
-    var viewport = get_window().get_visible_rect().size
+    # Set fixed window size
+    get_window().size = Vector2i(1152, 648)
+    get_window().move_to_center()
     var panel = Panel.new()
     var style = StyleBoxFlat.new()
-    panel.size = Vector2(viewport.x, viewport.y)
+    panel.size = Vector2(1152,648)
     panel.position = Vector2(0, 0)
     style.bg_color = Color(0.5, 0.5, 0.5, 0.5)
     panel.add_theme_stylebox_override("panel", style)
@@ -39,7 +41,7 @@ func _on_game_over(winner: String):
     panel.add_child(vbox)
     
     var label = Label.new()
-    label.text = "%s Wins!" % winner if winner != "" else "Draw!"
+    label.text = "%s won the battle!" % winner if winner != "" else "Draw!"
     label.add_theme_font_size_override("font_size", 48)
     label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     vbox.add_child(label)

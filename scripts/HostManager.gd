@@ -64,11 +64,14 @@ func update_cell(data: Dictionary):
 
         var cells = board.cell_list.filter(func(c): return cell.get_distance(c) <= Cell.HORIZON)
         for player in network_manager.players.values():
-            cell.seen_by[player.side] = false
-            for check in cells:
-                if check.side == player.side:
-                    cell.seen_by[player.side] = true
-                    break
+            # always see your own cells
+            cell.seen_by[player.side] = (cell.side == player.side)
+
+            if not cell.seen_by[player.side]:
+                for check in cells:
+                    if check.side == player.side:
+                        cell.seen_by[player.side] = true
+                        break
         network_manager.send_cell_delta(cell)
                 
 # Update troop growth (towns and bases)
@@ -113,35 +116,19 @@ func update_cell_combat(cell: Cell):
     if not cell.is_fighting():
         return
     
-    var sides_with_troops = {}
-    for side in Cell.MAX_PLAYERS:
-        if cell.troop_values[side] > 0:
-            sides_with_troops[side] = cell.troop_values[side]
-    
-    if sides_with_troops.size() <= 1:
-        # Combat resolved, assign winner
+    var result = get_combat_state(cell)
+    if result.count <= 1:
         cell.outdated = true
-        if sides_with_troops.size() == 1:
-            cell.side = sides_with_troops.keys()[0]
-        else:
-            cell.side = Cell.SIDE_NONE
+        cell.side = result.winner
         return
     
-    # Calculate combat losses (based on original formula)
-    if not cell.outdated:
-        cell.outdated = true
-        var total_enemies = {}
-        for side in sides_with_troops:
-            total_enemies[side] = 0
-            for other_side in sides_with_troops:
-                if other_side != side:
-                    total_enemies[side] += sides_with_troops[other_side]
+    # Calculate/apply combat losses (based on original formula)
+    cell.outdated = true
+    for side in Cell.MAX_PLAYERS:
+        if cell.troop_values[side] > 0:
+            var my_troops = cell.troop_values[side]
+            var enemy_troops = result.total - my_troops
         
-        # Apply losses
-        for side in sides_with_troops:
-            var my_troops = sides_with_troops[side]
-            var enemy_troops = total_enemies[side]
-            
             if enemy_troops > 0:
                 var ratio = float(enemy_troops) / float(my_troops)
                 var loss_factor = (ratio * ratio - 1.0 + randf() * 0.02) * fight_intensity
@@ -150,6 +137,24 @@ func update_cell_combat(cell: Cell):
                     var losses = int(loss_factor + 0.5)
                     losses = min(losses, my_troops)
                     cell.troop_values[side] = max(0, cell.troop_values[side] - losses)
+
+    # check for winner after losses
+    var outcome = get_combat_state(cell)
+    if outcome.count <= 1:
+        cell.side = outcome.winner
+
+func get_combat_state(cell: Cell) -> Dictionary:
+    var winner = Cell.SIDE_NONE
+    var count = 0
+    var total_troops = 0
+    
+    for side in Cell.MAX_PLAYERS:
+        if cell.troop_values[side] > 0:
+            winner = side
+            count += 1
+            total_troops += cell.troop_values[side]
+    
+    return {"winner": winner, "count": count, "total": total_troops}
 
 # Update troop movement
 func update_cell_movement(cell: Cell):

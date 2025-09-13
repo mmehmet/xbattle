@@ -307,12 +307,10 @@ func send_cell_delta(cell: Cell):
         "troops": cell.troop_values,
         "level": cell.level,
         "growth": cell.growth,
-        "seen_by": cell.seen_by,
     }
     
     for player in players.values():
-        if cell.seen_by[player.side]:
-            rpc_id(player.peer_id, "_receive_cell_delta", data)
+        rpc_id(player.peer_id, "_receive_cell_delta", data)
 
 @rpc("any_peer", "call_local", "reliable")
 func _receive_cell_delta(data: Dictionary):
@@ -325,7 +323,6 @@ func _receive_cell_delta(data: Dictionary):
         cell.troop_values = data.troops
         cell.level = data.level
         cell.growth = data.growth
-        cell.seen_by = data.seen_by
 
         game_manager.board.update_fog(data.side, cell)
         game_manager.board.queue_redraw()

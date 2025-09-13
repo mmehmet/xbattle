@@ -302,7 +302,7 @@ func draw_cell(cell: Cell):
         draw_polyline(border_points, Color.BLACK, border_width)
     
     # Troops
-    if cell.side >= 0 and cell.side < Cell.MAX_PLAYERS:
+    if cell.side >= 0:
         var center = get_hex_center(cell)
         if cell.is_fighting():
             draw_fighting_cell(cell, center)
@@ -362,7 +362,7 @@ func draw_owned_cell(cell: Cell, center: Vector2):
             draw_string(font, text_pos, text, HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color.WHITE)
 
 func draw_fighting_cell(cell: Cell, center: Vector2):
-    var strongest_side = -1
+    var strongest_side = Cell.SIDE_NONE
     var max_troops = 0
     
     # Find side with most troops
@@ -372,6 +372,8 @@ func draw_fighting_cell(cell: Cell, center: Vector2):
             strongest_side = side
     
     if strongest_side < 0:
+        print("cell is UNDECIDED")
+        draw_circle(center, 4.0, Color.GRAY)
         return
     
     # Draw single circle for strongest side
@@ -541,7 +543,7 @@ func get_stats() -> Dictionary:
     return stats
 
 # UI CALLBACKS
-func on_board_updated():
+func on_cell_changed():
     queue_redraw()
 
 func _to_string() -> String:
