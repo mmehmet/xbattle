@@ -48,7 +48,9 @@ func update_board():
             cell.outdated = false
     
     # Check for game over
-    network_manager.update_active(board.get_active())
+    var sides = network_manager.players.values().map(func(p): return p.side)
+    var active = board.get_active(sides)
+    network_manager.update_active(active)
     network_manager.check_victory()
 
 # receive update from the UI
@@ -222,6 +224,7 @@ func move_troops(source: Cell, dest: Cell):
         var max_capacity = dest.get_max_capacity()
         dest.troop_values[source.side] = min(current + move_amount, max_capacity)
         dest.side = Cell.SIDE_FIGHT
+        dest.clear_directions()
     
     source.outdated = true
     dest.outdated = true

@@ -291,6 +291,17 @@ func _receive_cell_click(data: Dictionary):
 
     host_manager.update_cell(data)
 
+func send_command(cell: Cell, command: int):
+    if not connected:
+        return
+    
+    var data = {
+        "cell_index": cell.index,
+        "command": command
+    }
+    
+    rpc_id(1, "_receive_cell_command", data)
+
 @rpc("any_peer", "call_local", "reliable")
 func _receive_cell_command(command_data: Dictionary):
     if not is_host:

@@ -24,19 +24,25 @@ func setup_game(config: Dictionary, network_mgr: NetworkManager = null):
 func _on_game_over(winner: String):
     print("Game over! %s was the winner" % winner)
     
-    # Set fixed window size
-    get_window().size = Vector2i(1152, 648)
-    get_window().move_to_center()
+    var viewport = get_window().get_visible_rect().size
     var panel = Panel.new()
     var style = StyleBoxFlat.new()
-    panel.size = Vector2(1152,648)
+    panel.size = viewport
     panel.position = Vector2(0, 0)
     style.bg_color = Color(0.5, 0.5, 0.5, 0.5)
     panel.add_theme_stylebox_override("panel", style)
     add_child(panel)
     
     var vbox = VBoxContainer.new()
-    vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    if get_window().mode == Window.MODE_FULLSCREEN:
+        var s = viewport.x / 1152.0
+        vbox.scale = Vector2(s, s)
+        vbox.position = Vector2(0, (viewport.y - 648 * s) * 0.5)
+        vbox.size = Vector2(1152, 648)
+    else:
+        get_window().size = Vector2i(1152, 648)
+        get_window().move_to_center()
+        vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     vbox.add_theme_constant_override("separation", 20)
     panel.add_child(vbox)
     

@@ -54,6 +54,7 @@ var game_manager: GameManager
 var selected_cell: Cell = null
 var mouse_down: bool = false
 var hovered_cell: Cell = null
+var offset_x: float = 0.0
 
 func _init(board_width: int = 15, board_height: int = 15):
     width = board_width
@@ -177,9 +178,9 @@ func get_cell_by_index(index: int) -> Cell:
     return null
 
 func get_cell_at_position(pos: Vector2) -> Cell:
-    # Rough grid position
-    var grid_x = int(pos.x / (cell_width * 0.75))
-    var grid_y = int((pos.y - (grid_x % 2) * cell_height * 0.5) / cell_height)
+    var adjusted_pos = Vector2(pos.x - offset_x, pos.y)
+    var grid_x = int(adjusted_pos.x / (cell_width * 0.75))
+    var grid_y = int((adjusted_pos.y - (grid_x % 2) * cell_height * 0.5) / cell_height)
     
     # Check this cell and neighbors
     for dx in range(-1, 2):
@@ -187,13 +188,17 @@ func get_cell_at_position(pos: Vector2) -> Cell:
             var test_x = grid_x + dx
             var test_y = grid_y + dy
             var cell = get_cell(test_x, test_y)
-            if cell and point_in_hex(pos, cell):
+            if cell and point_in_hex(adjusted_pos, cell):
                 return cell
     
     return null
 
 func point_in_hex(point: Vector2, cell: Cell) -> bool:
-    var center = get_hex_center(cell)
+    var x_radius = cell_width / 2
+    var y_radius = cell_height / 2
+    var x_pos = cell.x * cell_width * 0.75  # No offset_x here
+    var y_pos = cell.y * cell_height + (cell.x % 2) * y_radius
+    var center = Vector2(x_pos + x_radius, y_pos + y_radius)
     var distance = point.distance_to(center)
     return distance <= cell_width * 0.5
 
@@ -257,6 +262,8 @@ func is_good_base_location(cell: Cell, player: int) -> bool:
 
 # RENDERING
 func setup_initial_window():
+    cell_height = Cell.DEFAULT_CELL_SIZE
+    cell_width = 2 * Cell.DEFAULT_CELL_SIZE / sqrt(3)
     var board_width = width * cell_width * 3 / 4 + cell_width / 4
     var board_height = height * cell_height + cell_height * 0.5
     print("window is %d x %d with %d x %d cell" % [board_width, board_height, cell_width, cell_height])
@@ -276,6 +283,10 @@ func calculate_scaling(x: int, y: int):
     
     cell_height = int(sm)
     cell_width = 2 * cell_height / sqrt(3)
+    
+    # Center horizontally
+    var real_width = width * cell_width * 0.75 + cell_width / 4
+    offset_x = (x - real_width) * 0.5
 
 func _draw():
     draw_rect(Rect2(Vector2.ZERO, size), Color.BLACK)
@@ -326,7 +337,7 @@ func draw_cell(cell: Cell):
 func get_hex_center(cell: Cell) -> Vector2:
     var x_radius = cell_width / 2
     var y_radius = cell_height / 2
-    var x_pos = cell.x * cell_width * 0.75
+    var x_pos = cell.x * cell_width * 0.75 + offset_x
     var y_pos = cell.y * cell_height + (cell.x % 2) * y_radius
     return Vector2(x_pos + x_radius, y_pos + y_radius)
 
@@ -382,16 +393,16 @@ func draw_fighting_cell(cell: Cell, center: Vector2):
     radius = max(radius, 4.0)
     
     var color = get_player_color(strongest_side)
-    draw_circle(center, radius, color)
+    draw_circle(center, radius, color, false, 3.0)
 
 func draw_town_indicator(cell: Cell):
     var center = get_hex_center(cell)
-    var indicator_size = Vector2(8, 8)
-    var indicator_pos = center - indicator_size / 2
-    var indicator_rect = Rect2(indicator_pos, indicator_size)
+    var size = Vector2(cell_height * 0.3, cell_height * 0.3)
+    var pos = center - size / 2
+    var rect = Rect2(pos, size)
     
-    draw_rect(indicator_rect, Color.WHITE)
-    draw_rect(indicator_rect, Color.BLACK, false, 1)
+    draw_rect(rect, Color(1, 1, 1, 0.5))
+    draw_rect(rect, Color.BLACK, false, 4)
 
 func draw_direction_vectors(cell: Cell):
     # Only show direction vectors for our own troops
@@ -509,11 +520,19 @@ func get_cells_for_side(side: int) -> Array[Cell]:
             side_cells.append(cell)
     return side_cells
 
-func get_active() -> Array:
+func get_active(players: Array) -> Array:
     var active_sides = {}
+    
     for cell in cell_list:
-        if cell.side >= 0 and cell.side < Cell.MAX_PLAYERS and cell.get_troop_count() > 0:
+        if active_sides.size() == players.size():
+            break
+            
+        if cell.get_troop_count() > 0:
             active_sides[cell.side] = true
+        elif cell.side == Cell.SIDE_FIGHT:
+            for side in range(players.size()):
+                if cell.troop_values[side] > 0:
+                    active_sides[side] = true
     
     return active_sides.keys()
 

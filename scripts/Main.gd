@@ -41,3 +41,25 @@ func _on_game_ended():
     if network_manager.is_connected:
         network_manager.disconnect_from_game()
     show_start_screen()
+
+func _input(event):
+    if event is InputEventKey and event.pressed:
+        if event.keycode == KEY_F11:
+            toggle_fullscreen()
+
+func toggle_fullscreen():
+    var window = get_window()
+    if window.mode == Window.MODE_FULLSCREEN:
+        window.mode = Window.MODE_WINDOWED
+        window.size = Vector2i(1152, 648)
+        window.move_to_center()
+        # Call board's window setup if we're in game
+        for child in get_children():
+            if child is NetworkManager and child.game_manager and child.game_manager.board:
+                child.game_manager.board.setup_initial_window()
+    else:
+        window.mode = Window.MODE_FULLSCREEN
+
+    # trigger scaling update
+    await get_tree().process_frame
+    get_viewport().emit_signal("size_changed")
