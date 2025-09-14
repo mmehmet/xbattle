@@ -9,7 +9,7 @@ const TOWN_MIN: int = 50
 const TOWN_MAX: int = 100
 
 const DEFAULT_BOARD: int = 15
-const DEFAULT_CELL_SIZE: int = 50
+const DEFAULT_CELL_SIZE: int = 64
 const DEFAULT_MAXVAL: int = 20
 const DEFAULT_FIGHT: int = 5 # combat intensity
 const DEFAULT_MOVE: int = 3 # movement speed

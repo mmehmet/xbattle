@@ -4,6 +4,11 @@ extends Node
 var board: Board
 var network_manager: NetworkManager
 
+# Cost constants
+const COST_DIG = 30
+const COST_FILL = 20
+const COST_BUILD = 25
+
 # Game configuration (from original xbattle constants)
 @export var fight_intensity: int = Cell.DEFAULT_FIGHT
 @export var move_speed: int = Cell.DEFAULT_MOVE
@@ -20,14 +25,6 @@ func setup(nm: NetworkManager, board_of_truth: Board, bases: Array[Cell]):
     board = board_of_truth
     for base in bases:
         nm.send_cell_delta(base)
-
-    nm.player_left.connect(_check_victory.bind())
-
-func _check_victory(player_info: Dictionary = {}):
-    if network_manager.get_player_count() == 1:
-        var remaining_players = network_manager.players.values()
-        var winner = remaining_players[0].side
-        network_manager.rpc_all_clients("_game_over", winner)
 
 func _process(delta):
     update_timer += delta
@@ -56,13 +53,10 @@ func update_board():
             cell.outdated = false
     
     # Check for game over
-    var winner = board.check_victory()
-    if winner >= 0:
-        network_manager.rpc_all_clients("_game_over", winner)
-        print("Game Over! Winner: Player %d" % winner)
-    elif winner == -2:
-        network_manager.rpc_all_clients("_game_over", winner)
-        print("Game Over! Draw - all players eliminated")
+    var sides = network_manager.players.values().map(func(p): return p.side)
+    var active = board.get_active(sides)
+    network_manager.update_active(active)
+    network_manager.check_victory()
 
 # receive update from the UI
 func update_cell(data: Dictionary):
@@ -77,11 +71,14 @@ func update_cell(data: Dictionary):
 
         var cells = board.cell_list.filter(func(c): return cell.get_distance(c) <= Cell.HORIZON)
         for player in network_manager.players.values():
-            cell.seen_by[player.side] = false
-            for check in cells:
-                if check.side == player.side:
-                    cell.seen_by[player.side] = true
-                    break
+            # always see your own cells
+            cell.seen_by[player.side] = (cell.side == player.side)
+
+            if not cell.seen_by[player.side]:
+                for check in cells:
+                    if check.side == player.side:
+                        cell.seen_by[player.side] = true
+                        break
         network_manager.send_cell_delta(cell)
                 
 # Update troop growth (towns and bases)
@@ -126,43 +123,56 @@ func update_cell_combat(cell: Cell):
     if not cell.is_fighting():
         return
     
-    var sides_with_troops = {}
-    for side in Cell.MAX_PLAYERS:
-        if cell.troop_values[side] > 0:
-            sides_with_troops[side] = cell.troop_values[side]
-    
-    if sides_with_troops.size() <= 1:
-        # Combat resolved, assign winner
+    var result = get_combat_state(cell)
+    if result.count <= 1:
         cell.outdated = true
-        if sides_with_troops.size() == 1:
-            cell.side = sides_with_troops.keys()[0]
-        else:
-            cell.side = Cell.SIDE_NONE
+        cell.side = result.winner
         return
     
-    # Calculate combat losses (based on original formula)
-    if not cell.outdated:
-        cell.outdated = true
-        var total_enemies = {}
-        for side in sides_with_troops:
-            total_enemies[side] = 0
-            for other_side in sides_with_troops:
-                if other_side != side:
-                    total_enemies[side] += sides_with_troops[other_side]
-        
-        # Apply losses
-        for side in sides_with_troops:
-            var my_troops = sides_with_troops[side]
-            var enemy_troops = total_enemies[side]
+    # Calculate/apply combat losses
+    cell.outdated = true
+
+    var combatants = {}
+    for side in Cell.MAX_PLAYERS:
+        if cell.troop_values[side] > 0:
+            combatants[side] = {
+                "own": cell.troop_values[side],
+                "enemy": result.total - cell.troop_values[side],
+                "attack_vectors": 0
+            }
+            for neighbor in cell.connections:
+                if neighbor and neighbor.side == side:
+                    combatants[side]["attack_vectors"] += 1
             
-            if enemy_troops > 0:
-                var ratio = float(enemy_troops) / float(my_troops)
-                var loss_factor = (ratio * ratio - 1.0 + randf() * 0.02) * fight_intensity
-                
-                if loss_factor > 0:
-                    var losses = int(loss_factor + 0.5)
-                    losses = min(losses, my_troops)
-                    cell.troop_values[side] = max(0, cell.troop_values[side] - losses)
+    var sides = combatants.keys()
+    sides.shuffle()
+
+    for side in sides:
+        var data = combatants[side]
+        if data["enemy"] > 0:
+            var attack_bonus = 1.0 + (data["attack_vectors"] * 0.1)  # +10% per supporting cell
+            var base_loss = min(data["own"], data["enemy"]) * 0.1 * attack_bonus
+            var losses = max(1, int(base_loss * (0.8 + randf() * 0.4)))
+            
+            cell.troop_values[side] = max(0, cell.troop_values[side] - losses)
+
+    # check for winner after losses
+    var outcome = get_combat_state(cell)
+    if outcome.count <= 1:
+        cell.side = outcome.winner
+
+func get_combat_state(cell: Cell) -> Dictionary:
+    var winner = Cell.SIDE_NONE
+    var count = 0
+    var total_troops = 0
+    
+    for side in Cell.MAX_PLAYERS:
+        if cell.troop_values[side] > 0:
+            winner = side
+            count += 1
+            total_troops += cell.troop_values[side]
+    
+    return {"winner": winner, "count": count, "total": total_troops}
 
 # Update troop movement
 func update_cell_movement(cell: Cell):
@@ -183,8 +193,6 @@ func update_cell_movement(cell: Cell):
 
 # Move troops between cells (core movement logic)
 func move_troops(source: Cell, dest: Cell):
-    if dest.get_troop_count() < 1:
-        print("moving from %d,%d (idx=%d) to %d,%d (idx=%d)" % [source.x, source.y, source.index, dest.x, dest.y, dest.index])
     if dest.level < Board.FLAT_LAND:
         return # Can't move into sea
     
@@ -232,6 +240,86 @@ func move_troops(source: Cell, dest: Cell):
         var max_capacity = dest.get_max_capacity()
         dest.troop_values[source.side] = min(current + move_amount, max_capacity)
         dest.side = Cell.SIDE_FIGHT
+        dest.clear_directions()
     
     source.outdated = true
     dest.outdated = true
+
+func execute_attack(idx: int, side: int):
+    var cell = board.get_cell_by_index(idx)
+    if not cell or cell.side != side:
+        return
+    
+    for i in Cell.MAX_DIRECTIONS:
+        if cell.connections[i] != null:
+            cell.set_direction(i, true)
+    
+    network_manager.send_cell_delta(cell)
+
+func execute_dig(idx: int, side: int):
+    var cell = board.get_cell_by_index(idx)
+    if not cell or cell.level < Board.SHALLOW_SEA or cell.growth > 0:
+        return # cell contains a town or is already deep water
+
+    for troops in cell.troop_values:
+        if troops > 0:
+            return # cell contains troops
+
+    # Find adjacent friendly cell with enough troops
+    for connection in cell.connections:
+        if connection and connection.side == side and connection.get_troop_count() >= COST_DIG:
+            connection.set_troops(connection.side, connection.get_troop_count() - COST_DIG)
+            cell.level -= 1
+            network_manager.send_cell_delta(cell, true)
+            network_manager.send_cell_delta(connection)
+            return
+
+func execute_fill(idx: int, side: int):
+    var cell = board.get_cell_by_index(idx)
+    if not cell or cell.level > Board.LOW_HILLS or cell.growth > 0:
+        return # cell contains a town or is already high hills
+
+    for troops in cell.troop_values:
+        if troops > 0:
+            return # cell contains troops
+
+    # Find adjacent friendly cell with enough troops
+    for connection in cell.connections:
+        if connection and connection.side == side and connection.get_troop_count() >= COST_FILL:
+            connection.set_troops(connection.side, connection.get_troop_count() - COST_FILL)
+            cell.level += 1
+            network_manager.send_cell_delta(cell, true)
+            network_manager.send_cell_delta(connection)
+            return
+
+func execute_build(idx: int, side: int):
+    # Build/upgrade town
+    var cell = board.get_cell_by_index(idx)
+    if not cell or cell.side != side:
+        return
+        
+    if cell.growth >= Cell.TOWN_MAX:
+        return # town already fully upgraded 
+
+    if cell.get_troop_count() >= COST_BUILD:
+        cell.set_troops(cell.side, cell.get_troop_count() - COST_BUILD)
+        cell.growth = min(cell.growth + 25, Cell.TOWN_MAX)
+        network_manager.send_cell_delta(cell, true)
+
+func execute_scuttle(idx: int, side: int):
+    # Destroy town in cell
+    var cell = board.get_cell_by_index(idx)
+    if not cell or cell.side != side:
+        return
+        
+    # Destroy town in cell
+    cell.growth = 0
+    network_manager.send_cell_delta(cell, true)
+
+func execute_paratroops(idx: int, side: int):
+    # TODO: Implement airborne assault
+    print("Paratroops not implemented yet - cell [%d]" % idx)
+
+func execute_artillery(idx: int, side: int):
+    # TODO: Implement ranged attack
+    print("Artillery not implemented yet - cell [%d]" % idx)

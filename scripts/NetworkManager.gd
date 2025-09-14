@@ -6,9 +6,20 @@ signal player_left(player_info: Dictionary)
 signal lobby_updated(players: Array)
 signal connection_failed(error: String)
 signal game_started(config: Dictionary)
+signal game_over(winner: String)
 
 const DEFAULT_PORT = 7000
 const MAX_PLAYERS = 11
+
+# Command constants
+const CMD_ATTACK = 3
+const CMD_DIG = 6
+const CMD_FILL = 8
+const CMD_BUILD = 10
+const CMD_SCUTTLE = 12
+const CMD_PARATROOPS = 14
+const CMD_ARTILLERY = 16
+const OWN_CMDS = [CMD_ATTACK, CMD_BUILD, CMD_SCUTTLE]
 
 var multiplayer_peer: MultiplayerPeer
 var is_host: bool = false
@@ -169,14 +180,14 @@ func _notify_leaving():
         
         # Notify remaining players
         rpc_all_clients("_player_left", player_info)
-        player_left.emit(player_info)
 
 @rpc("any_peer", "call_local", "reliable")
 func _player_left(player_info: Dictionary):
     if players.has(player_info.peer_id):
         players.erase(player_info.peer_id)
-        player_left.emit(player_info)
         lobby_updated.emit(_get_player_list())
+        if is_host:
+            check_victory()
 
 @rpc("any_peer", "call_local", "reliable")
 func _on_host_disconnected():
@@ -249,24 +260,6 @@ func set_game_manager(gm: GameManager):
 
     game_manager = gm
 
-@rpc("any_peer", "call_local", "unreliable")
-func _receive_board_update(updates):
-    if is_host or not game_manager or not game_manager.board:
-        return
-    
-    for data in updates:
-        var cell = game_manager.board.get_cell_by_index(data.index)
-        if cell:
-            cell.side = data.side
-            cell.troop_values = data.troops
-            cell.level = data.level
-            cell.growth = data.growth
-            cell.direction_vectors = data.directions
-            cell.age = data.age
-    
-    if updates.size() > 0:
-        game_manager.board.queue_redraw()
-
 # PLAYER INPUT SYNCHRONIZATION
 func send_click(cell: Cell):
     if not connected:
@@ -288,16 +281,35 @@ func _receive_cell_click(data: Dictionary):
     if not is_host or not host_manager:
         return
 
-    print("new cell directions:", data.directions)
     host_manager.update_cell(data)
 
-@rpc("any_peer", "call_local", "reliable")
-func _receive_cell_command(command_data: Dictionary):
-    if not is_host:
+func send_command(cell: Cell, command: int, side: int):
+    if not connected:
         return
-    host_manager.update_cell(command_data)
+    
+    var data = {
+        "idx": cell.index,
+        "command": command,
+        "side": side,
+    }
+    
+    rpc_id(1, "_receive_cell_command", data)
 
-func send_cell_delta(cell: Cell):
+@rpc("any_peer", "call_local", "reliable")
+func _receive_cell_command(data: Dictionary):
+    if not is_host or not host_manager:
+        return
+
+    match data.command:
+        CMD_ATTACK: host_manager.execute_attack(data.idx, data.side)
+        CMD_DIG: host_manager.execute_dig(data.idx, data.side)
+        CMD_FILL: host_manager.execute_fill(data.idx, data.side)
+        CMD_BUILD: host_manager.execute_build(data.idx, data.side)
+        CMD_SCUTTLE: host_manager.execute_scuttle(data.idx, data.side)
+        CMD_PARATROOPS: host_manager.execute_paratroops(data.idx, data.side)
+        CMD_ARTILLERY: host_manager.execute_artillery(data.idx, data.side)
+
+func send_cell_delta(cell: Cell, play_sound: bool = false):
     if not is_host:
         return
 
@@ -307,12 +319,11 @@ func send_cell_delta(cell: Cell):
         "troops": cell.troop_values,
         "level": cell.level,
         "growth": cell.growth,
-        "seen_by": cell.seen_by,
+        "play_sound": play_sound,
     }
     
     for player in players.values():
-        if cell.seen_by[player.side]:
-            rpc_id(player.peer_id, "_receive_cell_delta", data)
+        rpc_id(player.peer_id, "_receive_cell_delta", data)
 
 @rpc("any_peer", "call_local", "reliable")
 func _receive_cell_delta(data: Dictionary):
@@ -325,10 +336,12 @@ func _receive_cell_delta(data: Dictionary):
         cell.troop_values = data.troops
         cell.level = data.level
         cell.growth = data.growth
-        cell.seen_by = data.seen_by
 
         game_manager.board.update_fog(data.side, cell)
         game_manager.board.queue_redraw()
+        
+        if data.get("play_sound", false):
+            game_manager.play_success_sound()
 
 # UTILITY FUNCTIONS
 func _find_next_available_side() -> int:
@@ -371,15 +384,8 @@ func _on_peer_disconnected(peer_id: int):
     if players.has(peer_id):
         var player_info = players[peer_id]
         players.erase(peer_id)
-        
         if is_host:
             rpc_all_clients("_player_left", player_info)
-            # Check for victory condition
-            if game_manager and players.size() == 1:
-                var winner = players.values()[0].side
-                game_manager.game_over.emit(winner)
-        
-        player_left.emit(player_info)
 
 func _on_connection_failed():
     connection_failed.emit("Connection failed")
@@ -395,9 +401,21 @@ func _on_server_disconnected():
     players.clear()
     connection_failed.emit("Server disconnected")
 
-@rpc("any_peer", "reliable")
-func _game_over(winner: int):
-    game_manager.game_over.emit(winner)
+func update_active(active: Array):
+    for peer_id in players.keys():
+        if players[peer_id].side not in active:
+            players.erase(peer_id)
+
+func check_victory():
+    if players.values().size() < 2:
+        var winner = ""
+        if players.size() == 1:
+            winner = players.values()[0].name
+        rpc_all_clients("_game_over", winner)
+
+@rpc("any_peer", "call_local", "reliable")
+func _game_over(winner: String):
+    game_over.emit(winner)
 
 func rpc_all_clients(method: String, arg1 = null, arg2 = null, arg3 = null):
     if arg3 != null:

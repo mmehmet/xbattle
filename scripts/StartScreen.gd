@@ -33,6 +33,10 @@ var join_address_input: LineEdit
 var player_name_input: LineEdit
 var host_button: Button
 var join_button: Button
+var map_label: Label
+var map_dropdown: OptionButton
+var info_label: Label
+var randomise: Button
 
 # Map options
 const map_sizes = [
@@ -51,6 +55,7 @@ const TERRAIN_LIMITS = {
 
 func _ready():
     setup_ui()
+    get_viewport().size_changed.connect(_resized)
 
 func setup_ui():
     # Set fixed window size
@@ -67,27 +72,39 @@ func setup_ui():
     # Main horizontal container
     var margin = MarginContainer.new()
     add_child(margin)
-    margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    margin.add_theme_constant_override("margin_left", 50)
-    margin.add_theme_constant_override("margin_right", 50)
+    margin.add_theme_constant_override("margin_left", 200)
+    margin.add_theme_constant_override("margin_right", 200)
     margin.add_theme_constant_override("margin_top", 50)
     margin.add_theme_constant_override("margin_bottom", 50)
+
+    # Title
+    var vbox = VBoxContainer.new()
+    margin.add_child(vbox)
+    vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+    var title = Label.new()
+    title.text = "PREPARE FOR BATTLE!"
+    title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    title.add_theme_font_size_override("font_size", 48)
+    vbox.add_child(title)
+    
+    add_spacer(vbox, 30)
+
     var hbox = HBoxContainer.new()
-    margin.add_child(hbox)
+    vbox.add_child(hbox)
     hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     hbox.add_theme_constant_override("separation", 20)
+    hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 
     # Left panel
     left_panel = VBoxContainer.new()
     hbox.add_child(left_panel)
     left_panel.custom_minimum_size = Vector2(350, 300)
-    left_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     
     # Right panel
     right_panel = VBoxContainer.new()
     hbox.add_child(right_panel)
     right_panel.custom_minimum_size = Vector2(350, 300)
-    right_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     
     # Populate left panel
     show_setup_screen()
@@ -95,20 +112,70 @@ func setup_ui():
     # Populate right panel
     show_lobby()
 
+func show_setup_screen():
+    clear_main_content(left_panel)
+    current_state = GameState.SETUP
+    
+    # Player name input
+    var name_label = Label.new()
+    name_label.add_theme_font_size_override("font_size", 18)
+    name_label.text = "Player Name:"
+    left_panel.add_child(name_label)
+    
+    player_name_input = LineEdit.new()
+    player_name_input.text = "Player"
+    player_name_input.placeholder_text = "Enter your name"
+    left_panel.add_child(player_name_input)
+    
+    add_spacer(left_panel, 20)
+    
+    # Map size
+    map_label = Label.new()
+    map_label.add_theme_font_size_override("font_size", 18)
+    map_label.text = "Map Size:"
+    left_panel.add_child(map_label)
+    
+    map_dropdown = OptionButton.new()
+    for map_option in map_sizes:
+        map_dropdown.add_item(map_option.name)
+    map_dropdown.selected = 1  # Default to 15x15
+    map_dropdown.item_selected.connect(_on_map_size_selected)
+    left_panel.add_child(map_dropdown)
+    
+    add_spacer(left_panel, 20)
+    
+    # Game info
+    info_label = Label.new()
+    info_label.add_theme_font_size_override("font_size", 24)
+    info_label.text = "• %d%% Hills\n• %d%% Forest\n• %d%% Sea\n• %d%% Towns" % [terrain.hill, terrain.forest, terrain.sea, terrain.town]
+    left_panel.add_child(info_label)
+
+    add_spacer(left_panel, 10)
+
+    randomise = Button.new()
+    randomise.text = "RANDOMISE TERRAIN"
+    randomise.pressed.connect(_randomise_terrain)
+    left_panel.add_child(randomise)
+
 func show_join_screen():
     clear_main_content(right_panel)
     current_state = GameState.JOINING
     update_buttons()
+    # hide host settings
+    map_label.visible = false
+    map_dropdown.visible = false
+    info_label.visible = false
+    randomise.visible = false
     
     var title = Label.new()
     title.text = "JOIN GAME"
-    title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    title.add_theme_font_size_override("font_size", 32)
+    title.add_theme_font_size_override("font_size", 18)
     right_panel.add_child(title)
     
     add_spacer(right_panel, 30)
     
     var address_label = Label.new()
+    address_label.add_theme_font_size_override("font_size", 18)
     address_label.text = "Host Address:"
     right_panel.add_child(address_label)
     
@@ -132,21 +199,32 @@ func show_join_screen():
     back_button.pressed.connect(_on_cancel_joining)
     right_panel.add_child(back_button)
 
+func show_start_buttons():
+    # Multiplayer buttons
+    host_button = Button.new()
+    host_button.text = "HOST GAME"
+    host_button.custom_minimum_size = Vector2(200, 50)
+    host_button.pressed.connect(_on_host_game)
+    right_panel.add_child(host_button)
+    
+    add_spacer(left_panel, 10)
+    
+    join_button = Button.new()
+    join_button.text = "JOIN GAME"
+    join_button.custom_minimum_size = Vector2(200, 50)
+    join_button.pressed.connect(_on_join_game)
+    right_panel.add_child(join_button)
+    
+    add_spacer(right_panel, 30)
+
 func show_lobby():
     clear_main_content(right_panel)
     current_state = GameState.IN_LOBBY
     update_buttons()
     
-    var title = Label.new()
-    title.text = "GAME LOBBY"
-    title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    title.add_theme_font_size_override("font_size", 28)
-    right_panel.add_child(title)
-    
-    add_spacer(right_panel, 30)
-    
     # Players list
     var players_label = Label.new()
+    players_label.add_theme_font_size_override("font_size", 18)
     players_label.text = "Players:"
     right_panel.add_child(players_label)
     
@@ -189,67 +267,6 @@ func show_lobby():
 
     update_player_list()
 
-func show_setup_screen():
-    clear_main_content(left_panel)
-    current_state = GameState.SETUP
-    
-    # Title
-    var title = Label.new()
-    title.text = "XBATTLE"
-    title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    title.add_theme_font_size_override("font_size", 48)
-    left_panel.add_child(title)
-    
-    add_spacer(left_panel, 30)
-    
-    # Player name input
-    var name_label = Label.new()
-    name_label.text = "Player Name:"
-    left_panel.add_child(name_label)
-    
-    player_name_input = LineEdit.new()
-    player_name_input.text = "Player"
-    player_name_input.placeholder_text = "Enter your name"
-    left_panel.add_child(player_name_input)
-    
-    add_spacer(left_panel, 20)
-    
-    # Map size
-    var map_label = Label.new()
-    map_label.text = "Map Size:"
-    left_panel.add_child(map_label)
-    
-    var map_dropdown = OptionButton.new()
-    for map_option in map_sizes:
-        map_dropdown.add_item(map_option.name)
-    map_dropdown.selected = 1  # Default to 15x15
-    map_dropdown.item_selected.connect(_on_map_size_selected)
-    left_panel.add_child(map_dropdown)
-    
-    add_spacer(left_panel, 20)
-    
-    # Game info
-    var info_label = Label.new()
-    info_label.text = "• %d%% Hills\n• %d%% Forest\n• %d%% Sea\n• %d%% Towns" % [terrain.hill, terrain.forest, terrain.sea, terrain.town]
-    left_panel.add_child(info_label)
-    
-    add_spacer(left_panel, 30)
-    
-    # Multiplayer buttons
-    host_button = Button.new()
-    host_button.text = "HOST GAME"
-    host_button.custom_minimum_size = Vector2(200, 50)
-    host_button.pressed.connect(_on_host_game)
-    left_panel.add_child(host_button)
-    
-    add_spacer(left_panel, 10)
-    
-    join_button = Button.new()
-    join_button.text = "JOIN GAME"
-    join_button.custom_minimum_size = Vector2(200, 50)
-    join_button.pressed.connect(_on_join_game)
-    left_panel.add_child(join_button)
-
 func update_player_list():
     if not player_list or not network_manager:
         return
@@ -260,7 +277,7 @@ func update_player_list():
     
     for player_info in players:
         var player_label = Label.new()
-        var suffix = " [HOSTING]" if player_info.is_host else ""
+        var suffix = " [HOST]" if player_info.is_host else ""
         player_label.text = "%d: %s%s" % [player_info.side, player_info.name, suffix]
         
         if player_info.side < Board.player_colors.size():
@@ -284,6 +301,7 @@ func add_spacer(parent: Control, height: int):
 
 # Event handlers
 func update_buttons():
+    show_start_buttons()
     var should_disable = players.size() > 0
     host_button.disabled = should_disable
     join_button.disabled = should_disable
@@ -291,6 +309,15 @@ func update_buttons():
 func _on_map_size_selected(index: int):
     if index >= 0 and index < map_sizes.size():
         selected_map_size = map_sizes[index].size
+
+func _randomise_terrain():
+    terrain = {
+        "hill": randi_range(TERRAIN_LIMITS.hill.min, TERRAIN_LIMITS.hill.max),
+        "forest": randi_range(TERRAIN_LIMITS.forest.min, TERRAIN_LIMITS.forest.max),
+        "sea": randi_range(TERRAIN_LIMITS.sea.min, TERRAIN_LIMITS.sea.max),
+        "town": randi_range(TERRAIN_LIMITS.town.min, TERRAIN_LIMITS.town.max),
+    }
+    info_label.text = "• %d%% Hills\n• %d%% Forest\n• %d%% Sea\n• %d%% Towns" % [terrain.hill, terrain.forest, terrain.sea, terrain.town]
 
 func _on_cancel_host():
     if players.size() > 1:
@@ -304,6 +331,12 @@ func _on_cancel_host():
         _confirm_cancel_host()
 
 func _on_cancel_joining():
+    # show map settings
+    map_label.visible = true
+    map_dropdown.visible = true
+    info_label.visible = true
+    randomise.visible = true
+
     show_lobby()
 
 func _confirm_cancel_host():
@@ -377,6 +410,17 @@ func _on_start_multiplayer_game():
     }
     
     network_manager.start_network_game(config)
+
+func _resized():
+    if get_window().mode == Window.MODE_FULLSCREEN:
+        var viewport = get_viewport().get_visible_rect().size
+        var s = viewport.x / 1152.0
+        scale = Vector2(s, s)
+        var height = 648 * s
+        position = Vector2(0, (viewport.y - height) * 0.5)
+    else:
+        scale = Vector2.ONE
+        position = Vector2.ZERO
 
 func _input(event):
     if event is InputEventKey and event.pressed:
