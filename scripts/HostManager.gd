@@ -129,21 +129,32 @@ func update_cell_combat(cell: Cell):
         cell.side = result.winner
         return
     
-    # Calculate/apply combat losses (based on original formula)
+    # Calculate/apply combat losses
     cell.outdated = true
+
+    var combatants = {}
     for side in Cell.MAX_PLAYERS:
         if cell.troop_values[side] > 0:
-            var my_troops = cell.troop_values[side]
-            var enemy_troops = result.total - my_troops
-        
-            if enemy_troops > 0:
-                var ratio = float(enemy_troops) / float(my_troops)
-                var loss_factor = (ratio * ratio - 1.0 + randf() * 0.02) * fight_intensity
-                
-                if loss_factor > 0:
-                    var losses = int(loss_factor + 0.5)
-                    losses = min(losses, my_troops)
-                    cell.troop_values[side] = max(0, cell.troop_values[side] - losses)
+            combatants[side] = {
+                "own": cell.troop_values[side],
+                "enemy": result.total - cell.troop_values[side],
+                "attack_vectors": 0
+            }
+            for neighbor in cell.connections:
+                if neighbor and neighbor.side == side:
+                    combatants[side]["attack_vectors"] += 1
+            
+    var sides = combatants.keys()
+    sides.shuffle()
+
+    for side in sides:
+        var data = combatants[side]
+        if data["enemy"] > 0:
+            var attack_bonus = 1.0 + (data["attack_vectors"] * 0.1)  # +10% per supporting cell
+            var base_loss = min(data["own"], data["enemy"]) * 0.1 * attack_bonus
+            var losses = max(1, int(base_loss * (0.8 + randf() * 0.4)))
+            
+            cell.troop_values[side] = max(0, cell.troop_values[side] - losses)
 
     # check for winner after losses
     var outcome = get_combat_state(cell)
@@ -247,10 +258,7 @@ func execute_attack(idx: int, side: int):
 
 func execute_dig(idx: int, side: int):
     var cell = board.get_cell_by_index(idx)
-    if not cell or cell.side != side:
-        return
-        
-    if cell.level < Board.SHALLOW_SEA or cell.growth > 0:
+    if not cell or cell.level < Board.SHALLOW_SEA or cell.growth > 0:
         return # cell contains a town or is already deep water
 
     for troops in cell.troop_values:
@@ -268,10 +276,7 @@ func execute_dig(idx: int, side: int):
 
 func execute_fill(idx: int, side: int):
     var cell = board.get_cell_by_index(idx)
-    if not cell or cell.side != side:
-        return
-        
-    if cell.level > Board.LOW_HILLS or cell.growth > 0:
+    if not cell or cell.level > Board.LOW_HILLS or cell.growth > 0:
         return # cell contains a town or is already high hills
 
     for troops in cell.troop_values:

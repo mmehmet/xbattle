@@ -19,6 +19,7 @@ const CMD_BUILD = 10
 const CMD_SCUTTLE = 12
 const CMD_PARATROOPS = 14
 const CMD_ARTILLERY = 16
+const OWN_CMDS = [CMD_ATTACK, CMD_BUILD, CMD_SCUTTLE]
 
 var multiplayer_peer: MultiplayerPeer
 var is_host: bool = false

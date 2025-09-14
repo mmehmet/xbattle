@@ -33,6 +33,10 @@ var join_address_input: LineEdit
 var player_name_input: LineEdit
 var host_button: Button
 var join_button: Button
+var map_label: Label
+var map_dropdown: OptionButton
+var info_label: Label
+var randomise: Button
 
 # Map options
 const map_sizes = [
@@ -96,13 +100,11 @@ func setup_ui():
     left_panel = VBoxContainer.new()
     hbox.add_child(left_panel)
     left_panel.custom_minimum_size = Vector2(350, 300)
-    #left_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     
     # Right panel
     right_panel = VBoxContainer.new()
     hbox.add_child(right_panel)
     right_panel.custom_minimum_size = Vector2(350, 300)
-    #right_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     
     # Populate left panel
     show_setup_screen()
@@ -128,12 +130,12 @@ func show_setup_screen():
     add_spacer(left_panel, 20)
     
     # Map size
-    var map_label = Label.new()
+    map_label = Label.new()
     map_label.add_theme_font_size_override("font_size", 18)
     map_label.text = "Map Size:"
     left_panel.add_child(map_label)
     
-    var map_dropdown = OptionButton.new()
+    map_dropdown = OptionButton.new()
     for map_option in map_sizes:
         map_dropdown.add_item(map_option.name)
     map_dropdown.selected = 1  # Default to 15x15
@@ -143,15 +145,27 @@ func show_setup_screen():
     add_spacer(left_panel, 20)
     
     # Game info
-    var info_label = Label.new()
+    info_label = Label.new()
     info_label.add_theme_font_size_override("font_size", 24)
     info_label.text = "• %d%% Hills\n• %d%% Forest\n• %d%% Sea\n• %d%% Towns" % [terrain.hill, terrain.forest, terrain.sea, terrain.town]
     left_panel.add_child(info_label)
+
+    add_spacer(left_panel, 10)
+
+    randomise = Button.new()
+    randomise.text = "RANDOMISE TERRAIN"
+    randomise.pressed.connect(_randomise_terrain)
+    left_panel.add_child(randomise)
 
 func show_join_screen():
     clear_main_content(right_panel)
     current_state = GameState.JOINING
     update_buttons()
+    # hide host settings
+    map_label.visible = false
+    map_dropdown.visible = false
+    info_label.visible = false
+    randomise.visible = false
     
     var title = Label.new()
     title.text = "JOIN GAME"
@@ -296,6 +310,15 @@ func _on_map_size_selected(index: int):
     if index >= 0 and index < map_sizes.size():
         selected_map_size = map_sizes[index].size
 
+func _randomise_terrain():
+    terrain = {
+        "hill": randi_range(TERRAIN_LIMITS.hill.min, TERRAIN_LIMITS.hill.max),
+        "forest": randi_range(TERRAIN_LIMITS.forest.min, TERRAIN_LIMITS.forest.max),
+        "sea": randi_range(TERRAIN_LIMITS.sea.min, TERRAIN_LIMITS.sea.max),
+        "town": randi_range(TERRAIN_LIMITS.town.min, TERRAIN_LIMITS.town.max),
+    }
+    info_label.text = "• %d%% Hills\n• %d%% Forest\n• %d%% Sea\n• %d%% Towns" % [terrain.hill, terrain.forest, terrain.sea, terrain.town]
+
 func _on_cancel_host():
     if players.size() > 1:
         # Show confirmation dialog
@@ -308,6 +331,12 @@ func _on_cancel_host():
         _confirm_cancel_host()
 
 func _on_cancel_joining():
+    # show map settings
+    map_label.visible = true
+    map_dropdown.visible = true
+    info_label.visible = true
+    randomise.visible = true
+
     show_lobby()
 
 func _confirm_cancel_host():

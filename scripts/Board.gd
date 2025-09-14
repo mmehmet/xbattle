@@ -28,8 +28,8 @@ const COLOURS = {
     DEEP_SEA: Color.CORNFLOWER_BLUE,
     SHALLOW_SEA: Color.LIGHT_BLUE,
     FLAT_LAND: Color(0.8, 0.8, 0.4),
-    FOREST: Color.DARK_SEA_GREEN,
-    LOW_HILLS: Color.SEA_GREEN,
+    FOREST: Color.SEA_GREEN,
+    LOW_HILLS: Color.SADDLE_BROWN,
     HIGH_HILLS: Color.LIGHT_GRAY,
     FOG: Color(0.1, 0.1, 0.1),
 }

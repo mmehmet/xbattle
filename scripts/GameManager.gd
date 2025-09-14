@@ -81,9 +81,6 @@ func on_cell_click(cell: Cell, direction_mask: int):
     network_manager.send_click(cell)
 
 func on_cell_command(cell: Cell, command: int):
-    if cell.side != current_player:
-        return
-
     network_manager.send_command(cell, command, current_player)
 
 # Game control functions
