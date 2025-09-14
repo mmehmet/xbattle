@@ -11,6 +11,15 @@ signal game_over(winner: String)
 const DEFAULT_PORT = 7000
 const MAX_PLAYERS = 11
 
+# Command constants
+const CMD_ATTACK = 3
+const CMD_DIG = 6
+const CMD_FILL = 8
+const CMD_BUILD = 10
+const CMD_SCUTTLE = 12
+const CMD_PARATROOPS = 14
+const CMD_ARTILLERY = 16
+
 var multiplayer_peer: MultiplayerPeer
 var is_host: bool = false
 var connected: bool = false
@@ -250,24 +259,6 @@ func set_game_manager(gm: GameManager):
 
     game_manager = gm
 
-@rpc("any_peer", "call_local", "unreliable")
-func _receive_board_update(updates):
-    if is_host or not game_manager or not game_manager.board:
-        return
-    
-    for data in updates:
-        var cell = game_manager.board.get_cell_by_index(data.index)
-        if cell:
-            cell.side = data.side
-            cell.troop_values = data.troops
-            cell.level = data.level
-            cell.growth = data.growth
-            cell.direction_vectors = data.directions
-            cell.age = data.age
-    
-    if updates.size() > 0:
-        game_manager.board.queue_redraw()
-
 # PLAYER INPUT SYNCHRONIZATION
 func send_click(cell: Cell):
     if not connected:
@@ -291,24 +282,33 @@ func _receive_cell_click(data: Dictionary):
 
     host_manager.update_cell(data)
 
-func send_command(cell: Cell, command: int):
+func send_command(cell: Cell, command: int, side: int):
     if not connected:
         return
     
     var data = {
-        "cell_index": cell.index,
-        "command": command
+        "idx": cell.index,
+        "command": command,
+        "side": side,
     }
     
     rpc_id(1, "_receive_cell_command", data)
 
 @rpc("any_peer", "call_local", "reliable")
-func _receive_cell_command(command_data: Dictionary):
-    if not is_host:
+func _receive_cell_command(data: Dictionary):
+    if not is_host or not host_manager:
         return
-    host_manager.update_cell(command_data)
 
-func send_cell_delta(cell: Cell):
+    match data.command:
+        CMD_ATTACK: host_manager.execute_attack(data.idx, data.side)
+        CMD_DIG: host_manager.execute_dig(data.idx, data.side)
+        CMD_FILL: host_manager.execute_fill(data.idx, data.side)
+        CMD_BUILD: host_manager.execute_build(data.idx, data.side)
+        CMD_SCUTTLE: host_manager.execute_scuttle(data.idx, data.side)
+        CMD_PARATROOPS: host_manager.execute_paratroops(data.idx, data.side)
+        CMD_ARTILLERY: host_manager.execute_artillery(data.idx, data.side)
+
+func send_cell_delta(cell: Cell, play_sound: bool = false):
     if not is_host:
         return
 
@@ -318,6 +318,7 @@ func send_cell_delta(cell: Cell):
         "troops": cell.troop_values,
         "level": cell.level,
         "growth": cell.growth,
+        "play_sound": play_sound,
     }
     
     for player in players.values():
@@ -337,6 +338,9 @@ func _receive_cell_delta(data: Dictionary):
 
         game_manager.board.update_fog(data.side, cell)
         game_manager.board.queue_redraw()
+        
+        if data.get("play_sound", false):
+            game_manager.play_success_sound()
 
 # UTILITY FUNCTIONS
 func _find_next_available_side() -> int:
@@ -402,11 +406,10 @@ func update_active(active: Array):
             players.erase(peer_id)
 
 func check_victory():
-    var players = players.values()
-    if players.size() < 2:
+    if players.values().size() < 2:
         var winner = ""
         if players.size() == 1:
-            winner = players[0].name
+            winner = players.values()[0].name
         rpc_all_clients("_game_over", winner)
 
 @rpc("any_peer", "call_local", "reliable")

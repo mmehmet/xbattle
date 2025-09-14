@@ -47,6 +47,10 @@ func _on_game_over(winner: String):
     panel.add_child(vbox)
     
     var label = Label.new()
+    if game_manager.network_manager:
+        var check = game_manager.network_manager.get_my_player_info().name
+        if check == winner:
+            winner = "YOU"
     label.text = "%s won the battle!" % winner if winner != "" else "Draw!"
     label.add_theme_font_size_override("font_size", 48)
     label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

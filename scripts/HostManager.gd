@@ -4,6 +4,11 @@ extends Node
 var board: Board
 var network_manager: NetworkManager
 
+# Cost constants
+const COST_DIG = 30
+const COST_FILL = 20
+const COST_BUILD = 25
+
 # Game configuration (from original xbattle constants)
 @export var fight_intensity: int = Cell.DEFAULT_FIGHT
 @export var move_speed: int = Cell.DEFAULT_MOVE
@@ -228,3 +233,88 @@ func move_troops(source: Cell, dest: Cell):
     
     source.outdated = true
     dest.outdated = true
+
+func execute_attack(idx: int, side: int):
+    var cell = board.get_cell_by_index(idx)
+    if not cell or cell.side != side:
+        return
+    
+    for i in Cell.MAX_DIRECTIONS:
+        if cell.connections[i] != null:
+            cell.set_direction(i, true)
+    
+    network_manager.send_cell_delta(cell)
+
+func execute_dig(idx: int, side: int):
+    var cell = board.get_cell_by_index(idx)
+    if not cell or cell.side != side:
+        return
+        
+    if cell.level < Board.SHALLOW_SEA or cell.growth > 0:
+        return # cell contains a town or is already deep water
+
+    for troops in cell.troop_values:
+        if troops > 0:
+            return # cell contains troops
+
+    # Find adjacent friendly cell with enough troops
+    for connection in cell.connections:
+        if connection and connection.side == side and connection.get_troop_count() >= COST_DIG:
+            connection.set_troops(connection.side, connection.get_troop_count() - COST_DIG)
+            cell.level -= 1
+            network_manager.send_cell_delta(cell, true)
+            network_manager.send_cell_delta(connection)
+            return
+
+func execute_fill(idx: int, side: int):
+    var cell = board.get_cell_by_index(idx)
+    if not cell or cell.side != side:
+        return
+        
+    if cell.level > Board.LOW_HILLS or cell.growth > 0:
+        return # cell contains a town or is already high hills
+
+    for troops in cell.troop_values:
+        if troops > 0:
+            return # cell contains troops
+
+    # Find adjacent friendly cell with enough troops
+    for connection in cell.connections:
+        if connection and connection.side == side and connection.get_troop_count() >= COST_FILL:
+            connection.set_troops(connection.side, connection.get_troop_count() - COST_FILL)
+            cell.level += 1
+            network_manager.send_cell_delta(cell, true)
+            network_manager.send_cell_delta(connection)
+            return
+
+func execute_build(idx: int, side: int):
+    # Build/upgrade town
+    var cell = board.get_cell_by_index(idx)
+    if not cell or cell.side != side:
+        return
+        
+    if cell.growth >= Cell.TOWN_MAX:
+        return # town already fully upgraded 
+
+    if cell.get_troop_count() >= COST_BUILD:
+        cell.set_troops(cell.side, cell.get_troop_count() - COST_BUILD)
+        cell.growth = min(cell.growth + 25, Cell.TOWN_MAX)
+        network_manager.send_cell_delta(cell, true)
+
+func execute_scuttle(idx: int, side: int):
+    # Destroy town in cell
+    var cell = board.get_cell_by_index(idx)
+    if not cell or cell.side != side:
+        return
+        
+    # Destroy town in cell
+    cell.growth = 0
+    network_manager.send_cell_delta(cell, true)
+
+func execute_paratroops(idx: int, side: int):
+    # TODO: Implement airborne assault
+    print("Paratroops not implemented yet - cell [%d]" % idx)
+
+func execute_artillery(idx: int, side: int):
+    # TODO: Implement ranged attack
+    print("Artillery not implemented yet - cell [%d]" % idx)

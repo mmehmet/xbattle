@@ -81,13 +81,13 @@ func _input(event):
 
 func key_to_command(keycode: int) -> int:
    match keycode:
-       KEY_A: return GameManager.CMD_ATTACK
-       KEY_D: return GameManager.CMD_DIG
-       KEY_F: return GameManager.CMD_FILL
-       KEY_B: return GameManager.CMD_BUILD
-       KEY_S: return GameManager.CMD_SCUTTLE
-       KEY_P: return GameManager.CMD_PARATROOPS
-       KEY_R: return GameManager.CMD_ARTILLERY
+       KEY_A: return NetworkManager.CMD_ATTACK
+       KEY_D: return NetworkManager.CMD_DIG
+       KEY_F: return NetworkManager.CMD_FILL
+       KEY_B: return NetworkManager.CMD_BUILD
+       KEY_S: return NetworkManager.CMD_SCUTTLE
+       KEY_P: return NetworkManager.CMD_PARATROOPS
+       KEY_R: return NetworkManager.CMD_ARTILLERY
        _: return -1
 
 func _on_viewport_resized():
@@ -367,10 +367,11 @@ func draw_owned_cell(cell: Cell, center: Vector2):
         
         if show_troop_numbers and cell.side == game_manager.current_player:
             var font = ThemeDB.fallback_font
+            var font_size = max(12, cell_height / 6)
             var text = str(troop_count)
             var text_size = font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, 12)
             var text_pos = center - text_size / 2
-            draw_string(font, text_pos, text, HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color.WHITE)
+            draw_string(font, text_pos, text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, Color.WHITE)
 
 func draw_fighting_cell(cell: Cell, center: Vector2):
     var strongest_side = Cell.SIDE_NONE
@@ -394,6 +395,14 @@ func draw_fighting_cell(cell: Cell, center: Vector2):
     
     var color = get_player_color(strongest_side)
     draw_circle(center, radius, color, false, 3.0)
+
+    if show_troop_numbers and cell.troop_values[game_manager.current_player] > 0:
+        var font = ThemeDB.fallback_font
+        var font_size = max(12, cell_height / 6)
+        var text = str(cell.troop_values[game_manager.current_player])
+        var text_size = font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+        var text_pos = center - text_size / 2
+        draw_string(font, text_pos, text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, Color.WHITE)
 
 func draw_town_indicator(cell: Cell):
     var center = get_hex_center(cell)
