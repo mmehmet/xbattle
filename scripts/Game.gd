@@ -41,8 +41,8 @@ func _on_game_over(winner: String):
         vbox.size = Vector2(1152, 648)
     else:
         get_window().size = Vector2i(1152, 648)
-        get_window().move_to_center()
         vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
     vbox.add_theme_constant_override("separation", 20)
     panel.add_child(vbox)
     
@@ -55,14 +55,6 @@ func _on_game_over(winner: String):
     label.add_theme_font_size_override("font_size", 48)
     label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     vbox.add_child(label)
-    
-    var button = Button.new()
-    button.text = "Return to Menu"
-    button.pressed.connect(func(): game_ended.emit())
-    vbox.add_child(button)
-    
-    await get_tree().create_timer(5.0).timeout
-    game_ended.emit()
 
 func _input(event):
     if event is InputEventKey and event.pressed:

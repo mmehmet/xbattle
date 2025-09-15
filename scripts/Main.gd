@@ -40,7 +40,7 @@ func _on_connection_failed(error: String):
 func _on_game_ended():
     if network_manager.is_connected:
         network_manager.disconnect_from_game()
-    show_start_screen()
+    get_tree().quit()
 
 func _input(event):
     if event is InputEventKey and event.pressed:
