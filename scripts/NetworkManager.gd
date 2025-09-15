@@ -283,12 +283,13 @@ func _receive_cell_click(data: Dictionary):
 
     host_manager.update_cell(data)
 
-func send_command(cell: Cell, command: int, side: int):
+func send_command(command: int, target: Cell, source: Cell, side: int):
     if not connected:
         return
     
     var data = {
-        "idx": cell.index,
+        "target": target.index,
+        "source": source.index,
         "command": command,
         "side": side,
     }
@@ -301,13 +302,13 @@ func _receive_cell_command(data: Dictionary):
         return
 
     match data.command:
-        CMD_ATTACK: host_manager.execute_attack(data.idx, data.side)
-        CMD_DIG: host_manager.execute_dig(data.idx, data.side)
-        CMD_FILL: host_manager.execute_fill(data.idx, data.side)
-        CMD_BUILD: host_manager.execute_build(data.idx, data.side)
-        CMD_SCUTTLE: host_manager.execute_scuttle(data.idx, data.side)
-        CMD_PARATROOPS: host_manager.execute_paratroops(data.idx, data.side)
-        CMD_ARTILLERY: host_manager.execute_artillery(data.idx, data.side)
+        CMD_ATTACK: host_manager.execute_attack(data.target, data.side)
+        CMD_DIG: host_manager.execute_dig(data.target, data.side)
+        CMD_FILL: host_manager.execute_fill(data.target, data.side)
+        CMD_BUILD: host_manager.execute_build(data.target, data.side)
+        CMD_SCUTTLE: host_manager.execute_scuttle(data.target, data.side)
+        CMD_PARATROOPS: host_manager.execute_paratroops(data.target, data.source, data.side)
+        CMD_ARTILLERY: host_manager.execute_artillery(data.target, data.source, data.side)
 
 func send_cell_delta(cell: Cell, play_sound: bool = false):
     if not is_host:

@@ -77,7 +77,9 @@ func _input(event):
         elif hovered_cell:
             var command = key_to_command(event.keycode)
             if command >= 0:
-                game_manager.on_cell_command(hovered_cell, command)
+                if selected_cell == null:
+                    selected_cell = hovered_cell
+                game_manager.on_cell_command(command, hovered_cell, selected_cell)
 
 func key_to_command(keycode: int) -> int:
    match keycode:

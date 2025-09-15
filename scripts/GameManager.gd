@@ -80,8 +80,8 @@ func on_cell_click(cell: Cell, direction_mask: int):
     
     network_manager.send_click(cell)
 
-func on_cell_command(cell: Cell, command: int):
-    network_manager.send_command(cell, command, current_player)
+func on_cell_command(command: int, target: Cell, source: Cell):
+    network_manager.send_command(command, target, source, current_player)
 
 # Game control functions
 func pause_game():

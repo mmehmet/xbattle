@@ -160,7 +160,7 @@ func show_setup_screen():
 func show_join_screen():
     clear_main_content(right_panel)
     current_state = GameState.JOINING
-    update_buttons()
+
     # hide host settings
     map_label.visible = false
     map_dropdown.visible = false
@@ -172,7 +172,7 @@ func show_join_screen():
     title.add_theme_font_size_override("font_size", 18)
     right_panel.add_child(title)
     
-    add_spacer(right_panel, 30)
+    add_spacer(right_panel, 20)
     
     var address_label = Label.new()
     address_label.add_theme_font_size_override("font_size", 18)
@@ -220,7 +220,14 @@ func show_start_buttons():
 func show_lobby():
     clear_main_content(right_panel)
     current_state = GameState.IN_LOBBY
-    update_buttons()
+    
+    if players.size():
+        var title = Label.new()
+        title.text = "HOST GAME"
+        title.add_theme_font_size_override("font_size", 18)
+        right_panel.add_child(title)
+    
+        add_spacer(right_panel, 20)
     
     # Players list
     var players_label = Label.new()
@@ -245,7 +252,7 @@ func show_lobby():
     margin.add_child(player_list)
     panel.add_child(margin)
     right_panel.add_child(panel)
-    
+
     add_spacer(right_panel, 30)
     
     # Start button (host only)
@@ -264,6 +271,11 @@ func show_lobby():
         cancel_button.text = "CANCEL HOSTING" if is_host else "DISCONNECT"
         cancel_button.pressed.connect(_on_cancel_host if is_host else _on_leave_lobby)
         right_panel.add_child(cancel_button)
+        if host_button and join_button:
+            host_button.visible = false
+            join_button.visible = false
+    else:
+        show_start_buttons()
 
     update_player_list()
 
@@ -300,12 +312,6 @@ func add_spacer(parent: Control, height: int):
     parent.add_child(spacer)
 
 # Event handlers
-func update_buttons():
-    show_start_buttons()
-    var should_disable = players.size() > 0
-    host_button.disabled = should_disable
-    join_button.disabled = should_disable
-
 func _on_map_size_selected(index: int):
     if index >= 0 and index < map_sizes.size():
         selected_map_size = map_sizes[index].size

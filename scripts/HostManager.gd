@@ -4,10 +4,13 @@ extends Node
 var board: Board
 var network_manager: NetworkManager
 
-# Cost constants
+# Command constants
 const COST_DIG = 30
 const COST_FILL = 20
 const COST_BUILD = 25
+const COST_ARTILLERY = 5
+const MAX_FIRE = 3
+const MAX_PARA = 6
 
 # Game configuration (from original xbattle constants)
 @export var fight_intensity: int = Cell.DEFAULT_FIGHT
@@ -123,6 +126,10 @@ func update_cell_combat(cell: Cell):
     if not cell.is_fighting():
         return
     
+    # Clear movement directions during combat
+    if cell.move > 0:
+        cell.clear_directions()
+    
     var result = get_combat_state(cell)
     if result.count <= 1:
         cell.outdated = true
@@ -180,7 +187,7 @@ func update_cell_movement(cell: Cell):
         return
     
     var current_troops = cell.get_troop_count()
-    if current_troops <= cell.lowbound:
+    if current_troops <= Cell.LOWBOUND:
         return
     
     # Process each direction vector (in random order)
@@ -197,7 +204,7 @@ func move_troops(source: Cell, dest: Cell):
         return # Can't move into sea
     
     var source_troops = source.get_troop_count()
-    var movable_troops = source_troops - source.lowbound
+    var movable_troops = source.get_troop_count() - Cell.LOWBOUND
     if movable_troops <= 0:
         return
     
@@ -316,10 +323,67 @@ func execute_scuttle(idx: int, side: int):
     cell.growth = 0
     network_manager.send_cell_delta(cell, true)
 
-func execute_paratroops(idx: int, side: int):
-    # TODO: Implement airborne assault
-    print("Paratroops not implemented yet - cell [%d]" % idx)
+func execute_paratroops(target_idx: int, source_idx: int, side: int):
+    var source = board.get_cell_by_index(source_idx)
+    var target = board.get_cell_by_index(target_idx)
 
-func execute_artillery(idx: int, side: int):
-    # TODO: Implement ranged attack
-    print("Artillery not implemented yet - cell [%d]" % idx)
+    if not source or source.side != side:
+        return
+
+    var distance = source.get_distance(target)
+    if distance > MAX_PARA:
+        return  # Outside paratrooper range
+
+    var troops = source.get_troop_count() - (Cell.LOWBOUND * 2)
+    if troops <= 0:
+        return  # Need troops to drop AND hold the fort!
+
+    # Execute drop
+    var paratroops = troops / 2  # 50% loss
+    source.set_troops(source.side, paratroops)
+    
+    if target.side == Cell.SIDE_NONE:
+        target.side = side
+        target.set_troops(side, paratroops)
+    elif target.side == side:
+        target.add_troops(paratroops)
+    else:
+        # Combat drop
+        target.troop_values[side] += paratroops
+        target.side = Cell.SIDE_FIGHT
+        target.clear_directions()
+    
+    network_manager.send_cell_delta(source)
+    network_manager.send_cell_delta(target, true)
+
+func execute_artillery(target_idx: int, source_idx: int, side: int):
+    var source = board.get_cell_by_index(source_idx)
+    var target = board.get_cell_by_index(target_idx)
+    
+    if not source or source.side != side:
+        return
+    
+    var distance = source.get_distance(target)
+    if distance > MAX_FIRE:
+        return  # Outside artillery range
+    
+    if not target.is_seen_by(side):
+        return  # Requires line of sight
+    
+    var troops = source.get_troop_count() - Cell.LOWBOUND
+    if troops <= 0:
+        return  # Need troops to fire
+    
+    var cost = min(COST_ARTILLERY, troops)  # Artillery costs 5 troops max
+    source.set_troops(source.side, source.get_troop_count() - cost)
+    
+    # Damage target
+    var damage = cost / 2 + 1  # 1-3 damage based on cost
+    if target.side >= 0 and target.get_troop_count() > 0:
+        var new_count = max(0, target.get_troop_count() - damage)
+        target.set_troops(target.side, new_count)
+        if new_count == 0:
+            target.side = Cell.SIDE_NONE
+    
+    network_manager.send_cell_delta(source)
+    network_manager.send_cell_delta(target, true)

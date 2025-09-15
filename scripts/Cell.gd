@@ -17,7 +17,10 @@ const MOVE_PENALTY = 0.2
 
 const SIDE_NONE: int = -1
 const SIDE_FIGHT: int = 11
-const HORIZON: int = 2
+const HORIZON: int = 4
+
+# Troop movement
+const LOWBOUND: int = 0  # Reserve troops (can't move)
 
 @export var x: int = 0
 @export var y: int = 0
@@ -36,9 +39,6 @@ const HORIZON: int = 2
 @export var move: int = 0  # Number of active direction vectors
 @export var direction_vectors: Array[bool] = []  # [0-6 directions]
 @export var age: int = 0  # How long owned by same side
-
-# Combat state
-@export var lowbound: int = 0  # Reserve troops (can't move)
 
 # Visibility and updates
 @export var outdated: bool = false
