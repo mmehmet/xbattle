@@ -310,7 +310,7 @@ func _receive_cell_command(data: Dictionary):
         CMD_PARATROOPS: host_manager.execute_paratroops(data.target, data.source, data.side)
         CMD_ARTILLERY: host_manager.execute_artillery(data.target, data.source, data.side)
 
-func send_cell_delta(cell: Cell, play_sound: bool = false):
+func send_cell_delta(cell: Cell, command: int = -1):
     if not is_host:
         return
 
@@ -320,7 +320,7 @@ func send_cell_delta(cell: Cell, play_sound: bool = false):
         "troops": cell.troop_values,
         "level": cell.level,
         "growth": cell.growth,
-        "play_sound": play_sound,
+        "command": command,
     }
     
     for player in players.values():
@@ -341,8 +341,8 @@ func _receive_cell_delta(data: Dictionary):
         game_manager.board.update_fog(data.side, cell)
         game_manager.board.queue_redraw()
         
-        if data.get("play_sound", false):
-            game_manager.play_success_sound()
+        if data.get("command", -1) > 0:
+            game_manager.play_success_sound(data.command)
 
 # UTILITY FUNCTIONS
 func _find_next_available_side() -> int:

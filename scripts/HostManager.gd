@@ -261,43 +261,39 @@ func execute_attack(idx: int, side: int):
         if cell.connections[i] != null:
             cell.set_direction(i, true)
     
-    network_manager.send_cell_delta(cell)
+    network_manager.send_cell_delta(cell, network_manager.CMD_ATTACK)
 
 func execute_dig(idx: int, side: int):
     var cell = board.get_cell_by_index(idx)
-    if not cell or cell.level < Board.SHALLOW_SEA or cell.growth > 0:
-        return # cell contains a town or is already deep water
+    if not cell or cell.level < Board.FLAT_LAND or cell.growth > 0:
+        return # cell contains a town or is already at sea level
 
-    for troops in cell.troop_values:
-        if troops > 0:
-            return # cell contains troops
+    for i in range(cell.troop_values.size()).filter(func(idx): return idx != side):
+        if cell.troop_values[i] > 0:
+            return # cell has enemy troops
 
-    # Find adjacent friendly cell with enough troops
-    for connection in cell.connections:
-        if connection and connection.side == side and connection.get_troop_count() >= COST_DIG:
-            connection.set_troops(connection.side, connection.get_troop_count() - COST_DIG)
-            cell.level -= 1
-            network_manager.send_cell_delta(cell, true)
-            network_manager.send_cell_delta(connection)
-            return
+    var remainder = cell.get_troop_count() - COST_DIG
+    if remainder >= Cell.LOWBOUND:
+        if cell.level == Board.FLAT_LAND:
+            remainder = 0
+        cell.level -= 1
+        cell.set_troops(side, remainder)
+        network_manager.send_cell_delta(cell, network_manager.CMD_DIG)
 
 func execute_fill(idx: int, side: int):
     var cell = board.get_cell_by_index(idx)
     if not cell or cell.level > Board.LOW_HILLS or cell.growth > 0:
         return # cell contains a town or is already high hills
 
-    for troops in cell.troop_values:
-        if troops > 0:
-            return # cell contains troops
+    for i in range(cell.troop_values.size()).filter(func(idx): return idx != side):
+        if cell.troop_values[i] > 0:
+            return # cell contains enemy troops
 
-    # Find adjacent friendly cell with enough troops
-    for connection in cell.connections:
-        if connection and connection.side == side and connection.get_troop_count() >= COST_FILL:
-            connection.set_troops(connection.side, connection.get_troop_count() - COST_FILL)
-            cell.level += 1
-            network_manager.send_cell_delta(cell, true)
-            network_manager.send_cell_delta(connection)
-            return
+    var remainder = cell.get_troop_count() - COST_FILL
+    if remainder >= Cell.LOWBOUND:
+        cell.set_troops(side, remainder)
+        cell.level += 1
+        network_manager.send_cell_delta(cell, network_manager.CMD_FILL)
 
 func execute_build(idx: int, side: int):
     # Build/upgrade town
@@ -311,7 +307,7 @@ func execute_build(idx: int, side: int):
     if cell.get_troop_count() >= COST_BUILD:
         cell.set_troops(cell.side, cell.get_troop_count() - COST_BUILD)
         cell.growth = min(cell.growth + 25, Cell.TOWN_MAX)
-        network_manager.send_cell_delta(cell, true)
+        network_manager.send_cell_delta(cell, network_manager.CMD_BUILD)
 
 func execute_scuttle(idx: int, side: int):
     # Destroy town in cell
@@ -321,7 +317,7 @@ func execute_scuttle(idx: int, side: int):
         
     # Destroy town in cell
     cell.growth = 0
-    network_manager.send_cell_delta(cell, true)
+    network_manager.send_cell_delta(cell, network_manager.CMD_SCUTTLE)
 
 func execute_paratroops(target_idx: int, source_idx: int, side: int):
     var source = board.get_cell_by_index(source_idx)
@@ -354,7 +350,7 @@ func execute_paratroops(target_idx: int, source_idx: int, side: int):
         target.clear_directions()
     
     network_manager.send_cell_delta(source)
-    network_manager.send_cell_delta(target, true)
+    network_manager.send_cell_delta(target, network_manager.CMD_PARATROOPS)
 
 func execute_artillery(target_idx: int, source_idx: int, side: int):
     var source = board.get_cell_by_index(source_idx)
@@ -386,4 +382,4 @@ func execute_artillery(target_idx: int, source_idx: int, side: int):
             target.side = Cell.SIDE_NONE
     
     network_manager.send_cell_delta(source)
-    network_manager.send_cell_delta(target, true)
+    network_manager.send_cell_delta(target, network_manager.CMD_ARTILLERY)

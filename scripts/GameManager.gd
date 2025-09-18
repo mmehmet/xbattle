@@ -1,8 +1,11 @@
 class_name GameManager
 extends Node
 
+const ASSETS = "res://assets/"
+
 var network_manager: NetworkManager
 var music: AudioStreamPlayer
+var spam: AudioStreamPlayer
 var track: int = 0
 var loops: int = 0
 var target: int = 0 
@@ -121,12 +124,26 @@ func get_game_stats() -> Dictionary:
     return stats
 
 # Misc
-func play_success_sound():
-   var audio = AudioStreamPlayer.new()
-   add_child(audio)
-   audio.stream = load("res://assets/dirt.mp3")
-   audio.play()
-   audio.finished.connect(func(): audio.queue_free())
+func play_success_sound(command: int):
+    var audio = AudioStreamPlayer.new()
+    var file = "dirt.mp3"
+    match command:
+        NetworkManager.CMD_ATTACK: file = "attack.mp3"
+        NetworkManager.CMD_ARTILLERY: file = "artillery.mp3" 
+        NetworkManager.CMD_SCUTTLE: file = "explodey.mp3"
+        NetworkManager.CMD_PARATROOPS: 
+            file = "plane.mp3"
+            if spam and spam.playing:
+                spam.stop()
+    
+    add_child(audio)
+    audio.stream = load(ASSETS + file)
+    audio.play()
+    
+    if command == NetworkManager.CMD_PARATROOPS:
+        spam = audio
+    
+    audio.finished.connect(func(): audio.queue_free())
 
 func start_music():
     if not is_inside_tree():
@@ -139,7 +156,7 @@ func start_music():
         music.volume_db = -10
         music.finished.connect(_on_music_done)
 
-    music.stream = load("res://assets/destiny_awaits.mp3")
+    music.stream = load(ASSETS + "destiny_awaits.mp3")
     target = randi_range(3, 8)
     music.play()
 
@@ -157,12 +174,12 @@ func _on_music_done():
         # Switch to march_to_freedom (plays once)
         track = 1
         loops = 0
-        music.stream = load("res://assets/march_to_freedom.mp3")
+        music.stream = load(ASSETS + "march_to_freedom.mp3")
     elif track == 1:
         # Back to destiny_awaits after one play
         track = 0
         loops = 0
         target = randi_range(3, 8)
-        music.stream = load("res://assets/destiny_awaits.mp3")
+        music.stream = load(ASSETS + "destiny_awaits.mp3")
     
     music.play()

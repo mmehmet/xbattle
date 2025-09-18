@@ -20,7 +20,7 @@ const SIDE_FIGHT: int = 11
 const HORIZON: int = 4
 
 # Troop movement
-const LOWBOUND: int = 0  # Reserve troops (can't move)
+const LOWBOUND: int = 1  # Reserve troops (can't move)
 
 @export var x: int = 0
 @export var y: int = 0
