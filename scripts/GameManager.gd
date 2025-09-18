@@ -2,6 +2,10 @@ class_name GameManager
 extends Node
 
 var network_manager: NetworkManager
+var music: AudioStreamPlayer
+var track: int = 0
+var loops: int = 0
+var target: int = 0 
 
 # Game state
 @export var board: Board
@@ -51,6 +55,8 @@ func start_new_game(config: Dictionary):
     if board:
         print("PLAYER %d received board from host" % current_player)
         board.update_fog(current_player, board.get_cells_for_side(current_player)[0])
+
+    start_music()
 
 func _deserialize_board(data: Dictionary) -> Board:
     if (network_manager and network_manager.is_host and board):
@@ -121,3 +127,41 @@ func play_success_sound():
    audio.stream = load("res://assets/dirt.mp3")
    audio.play()
    audio.finished.connect(func(): audio.queue_free())
+
+func start_music():
+    if not is_inside_tree():
+        call_deferred("start_music")
+        return
+
+    if not music:
+        music = AudioStreamPlayer.new()
+        add_child(music)
+        music.volume_db = -10
+        music.finished.connect(_on_music_done)
+
+    music.stream = load("res://assets/destiny_awaits.mp3")
+    target = randi_range(3, 8)
+    music.play()
+
+func toggle_music():
+    if music:
+        if music.playing:
+            music.stop()
+        else:
+            music.play()
+
+func _on_music_done():
+    loops += 1
+    
+    if track == 0 and loops >= target:
+        track = 1
+        loops = 0
+        target = randi_range(2, 5)
+        music.stream = load("res://assets/march_to_freedom.mp3")
+    elif track == 1 and loops >= target:
+        track = 0
+        loops = 0
+        target = randi_range(3, 8)
+        music.stream = load("res://assets/destiny_awaits.mp3")
+    
+    music.play()

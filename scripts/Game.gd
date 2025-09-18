@@ -60,6 +60,8 @@ func _input(event):
     if event is InputEventKey and event.pressed:
         if event.keycode == KEY_ESCAPE:
             game_ended.emit()
+        elif event.keycode == KEY_M:
+            game_manager.toggle_music()
         elif event.keycode == KEY_Q:
             _concede()
 
