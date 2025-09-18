@@ -49,7 +49,7 @@ func _on_game_over(winner: String):
     var label = Label.new()
     if game_manager.network_manager:
         var check = game_manager.network_manager.get_my_player_info()
-        if check.name and check.name == winner:
+        if check.has("name") and check.name == winner:
             winner = "You"
     label.text = "%s won the battle!" % winner if winner != "" else "Draw!"
     label.add_theme_font_size_override("font_size", 48)

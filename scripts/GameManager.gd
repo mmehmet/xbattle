@@ -154,11 +154,12 @@ func _on_music_done():
     loops += 1
     
     if track == 0 and loops >= target:
+        # Switch to march_to_freedom (plays once)
         track = 1
         loops = 0
-        target = randi_range(2, 5)
         music.stream = load("res://assets/march_to_freedom.mp3")
-    elif track == 1 and loops >= target:
+    elif track == 1:
+        # Back to destiny_awaits after one play
         track = 0
         loops = 0
         target = randi_range(3, 8)
