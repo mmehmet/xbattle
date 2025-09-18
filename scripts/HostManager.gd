@@ -276,6 +276,7 @@ func execute_dig(idx: int, side: int):
     if remainder >= Cell.LOWBOUND:
         if cell.level == Board.FLAT_LAND:
             remainder = 0
+            cell.side = Cell.SIDE_NONE
         cell.level -= 1
         cell.set_troops(side, remainder)
         network_manager.send_cell_delta(cell, network_manager.CMD_DIG)
@@ -294,6 +295,16 @@ func execute_fill(idx: int, side: int):
         cell.set_troops(side, remainder)
         cell.level += 1
         network_manager.send_cell_delta(cell, network_manager.CMD_FILL)
+    else:
+        # Find adjacent friendly cell with enough troops
+        for ally in cell.connections:
+            var remain = ally.get_troop_count() - COST_FILL
+            if ally and ally.side == side and remain >= Cell.LOWBOUND:
+                ally.set_troops(side, remain)
+                cell.level += 1
+                network_manager.send_cell_delta(cell, network_manager.CMD_FILL)
+                network_manager.send_cell_delta(ally)
+                return
 
 func execute_build(idx: int, side: int):
     # Build/upgrade town

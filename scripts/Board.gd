@@ -541,7 +541,7 @@ func get_active(players: Array) -> Array:
         if cell.get_troop_count() > 0:
             active_sides[cell.side] = true
         elif cell.side == Cell.SIDE_FIGHT:
-            for side in range(players.size()):
+            for side in players:
                 if cell.troop_values[side] > 0:
                     active_sides[side] = true
     
