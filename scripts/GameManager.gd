@@ -59,7 +59,8 @@ func start_new_game(config: Dictionary):
         print("PLAYER %d received board from host" % current_player)
         board.update_fog(current_player, board.get_cells_for_side(current_player)[0])
 
-    start_music()
+    if config.get("music", true):
+        start_music()
 
 func _deserialize_board(data: Dictionary) -> Board:
     if (network_manager and network_manager.is_host and board):
@@ -161,11 +162,14 @@ func start_music():
     music.play()
 
 func toggle_music():
-    if music:
-        if music.playing:
-            music.stop()
-        else:
-            music.play()
+    if not music:
+        start_music()
+        return
+
+    if music.playing:
+        music.stop()
+    else:
+        music.play()
 
 func _on_music_done():
     loops += 1

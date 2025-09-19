@@ -52,7 +52,7 @@ func toggle_fullscreen():
     if window.mode == Window.MODE_FULLSCREEN:
         window.mode = Window.MODE_WINDOWED
         window.size = Vector2i(1152, 648)
-        window.move_to_center()
+        #window.move_to_center()
         # Call board's window setup if we're in game
         for child in get_children():
             if child is NetworkManager and child.game_manager and child.game_manager.board:

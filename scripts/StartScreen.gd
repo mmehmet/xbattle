@@ -1,7 +1,7 @@
 extends Control
 
 # Game state
-enum GameState { SETUP, JOINING, IN_LOBBY }
+enum GameState { SETUP, JOINING }
 var current_state: GameState = GameState.SETUP
 
 # Configuration
@@ -37,6 +37,7 @@ var map_label: Label
 var map_dropdown: OptionButton
 var info_label: Label
 var randomise: Button
+var music: CheckBox
 
 # Map options
 const map_sizes = [
@@ -60,7 +61,7 @@ func _ready():
 func setup_ui():
     # Set fixed window size
     get_window().size = Vector2i(1152, 648)
-    get_window().move_to_center()
+    #get_window().move_to_center()
 
     terrain = {
         "hill": randi_range(TERRAIN_LIMITS.hill.min, TERRAIN_LIMITS.hill.max),
@@ -127,7 +128,15 @@ func show_setup_screen():
     player_name_input.placeholder_text = "Enter your name"
     left_panel.add_child(player_name_input)
     
-    add_spacer(left_panel, 20)
+    add_spacer(left_panel, 10)
+
+    music = CheckBox.new()
+    music.add_theme_font_size_override("font_size", 18)
+    music.text = "Music"
+    music.button_pressed = false
+    left_panel.add_child(music)
+    
+    add_spacer(left_panel, 10)
     
     # Map size
     map_label = Label.new()
@@ -142,7 +151,7 @@ func show_setup_screen():
     map_dropdown.item_selected.connect(_on_map_size_selected)
     left_panel.add_child(map_dropdown)
     
-    add_spacer(left_panel, 20)
+    add_spacer(left_panel, 10)
     
     # Game info
     info_label = Label.new()
@@ -153,19 +162,13 @@ func show_setup_screen():
     add_spacer(left_panel, 10)
 
     randomise = Button.new()
-    randomise.text = "RANDOMISE TERRAIN"
+    randomise.text = "CHANGE TERRAIN"
     randomise.pressed.connect(_randomise_terrain)
     left_panel.add_child(randomise)
 
 func show_join_screen():
     clear_main_content(right_panel)
     current_state = GameState.JOINING
-
-    # hide host settings
-    map_label.visible = false
-    map_dropdown.visible = false
-    info_label.visible = false
-    randomise.visible = false
     
     var title = Label.new()
     title.text = "JOIN GAME"
@@ -219,7 +222,7 @@ func show_start_buttons():
 
 func show_lobby():
     clear_main_content(right_panel)
-    current_state = GameState.IN_LOBBY
+    _show_game_options()
     
     if players.size():
         var title = Label.new()
@@ -337,13 +340,13 @@ func _on_cancel_host():
         _confirm_cancel_host()
 
 func _on_cancel_joining():
-    # show map settings
-    map_label.visible = true
-    map_dropdown.visible = true
-    info_label.visible = true
-    randomise.visible = true
-
     show_lobby()
+
+func _show_game_options():
+    map_label.visible = is_host
+    map_dropdown.visible = is_host
+    info_label.visible = is_host
+    randomise.visible = is_host
 
 func _confirm_cancel_host():
     network_manager.stop_hosting()
@@ -413,6 +416,7 @@ func _on_start_multiplayer_game():
         "forest_density": terrain.forest,
         "sea_density": terrain.sea,
         "town_density": terrain.town,
+        "music": music.button_pressed,
     }
     
     network_manager.start_network_game(config)
@@ -431,17 +435,15 @@ func _resized():
 func _input(event):
     if event is InputEventKey and event.pressed:
         if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
-            match current_state:
-                GameState.SETUP:
+            if current_state == GameState.JOINING:
+                _on_connect_to_host()
+            else:
+                if is_host and start_button and not start_button.disabled:
+                    _on_start_multiplayer_game()
+                else:
                     _on_host_game()
-                GameState.JOINING:
-                    _on_connect_to_host()
-                GameState.IN_LOBBY:
-                    if is_host and start_button and not start_button.disabled:
-                        _on_start_multiplayer_game()
         elif event.keycode == KEY_ESCAPE:
-            match current_state:
-                GameState.SETUP:
-                    get_tree().quit()
-                GameState.JOINING, GameState.IN_LOBBY:
-                    show_setup_screen()
+            if current_state == GameState.SETUP:
+                get_tree().quit()
+            else:
+                show_setup_screen()

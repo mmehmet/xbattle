@@ -22,8 +22,6 @@ func setup_game(config: Dictionary, network_mgr: NetworkManager = null):
     board.game_manager = game_manager
 
 func _on_game_over(winner: String):
-    print("Game over! %s was the winner" % winner)
-    
     var viewport = get_window().get_visible_rect().size
     var panel = Panel.new()
     var style = StyleBoxFlat.new()
@@ -44,6 +42,7 @@ func _on_game_over(winner: String):
         vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
     vbox.add_theme_constant_override("separation", 20)
+    vbox.alignment = BoxContainer.ALIGNMENT_CENTER
     panel.add_child(vbox)
     
     var label = Label.new()
